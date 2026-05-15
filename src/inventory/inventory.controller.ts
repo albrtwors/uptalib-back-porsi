@@ -4,7 +4,7 @@ import { CreateItemInventory } from './dto/create-item-dto';
 import { EditItemInventory } from './dto/edit-item-dto';
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
-import { storageFor1File } from '@/books/utils/storage';
+import { storageFor1File } from '../books/utils/storage';
 import { CreateInventoryDto } from './dto/create-inventory.dto';
 @Controller('inventory')
 export class InventoryController {

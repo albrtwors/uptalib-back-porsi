@@ -4,7 +4,7 @@ import { IsEmail, IsEnum, IsNotEmpty, IsString, MinLength } from 'class-validato
 export enum Role {
   USER = 'USER',
   ADMIN = 'ADMIN',
-  SUPERADMIN = 'SUPERADMIN',
+  LIBRARIAN = 'LIBRARIAN',
 }
 
 export class CreateUserDto {

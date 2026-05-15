@@ -19,6 +19,10 @@ const update_physical_book_operation_dto_1 = require("./dto/update-physical-book
 const entrie_dto_1 = require("./dto/entrie-dto");
 const drop_dto_1 = require("./dto/drop-dto");
 const loan_dto_1 = require("./dto/loan-dto");
+const roles_decorator_1 = require("../auth/decorators/roles.decorator");
+const client_1 = require("@prisma/client");
+const jwt_auth_guard_1 = require("../auth/guards/jwt-auth.guard");
+const roles_guard_1 = require("../auth/guards/roles.guard");
 let PhysicalBookOperationController = class PhysicalBookOperationController {
     constructor(physicalBookOperationService) {
         this.physicalBookOperationService = physicalBookOperationService;
@@ -55,6 +59,8 @@ let PhysicalBookOperationController = class PhysicalBookOperationController {
 exports.PhysicalBookOperationController = PhysicalBookOperationController;
 __decorate([
     (0, common_1.Get)(),
+    (0, roles_decorator_1.Roles)(client_1.Role.LIBRARIAN, client_1.Role.ADMIN),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
     __param(0, (0, common_1.Query)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Object]),
@@ -62,6 +68,8 @@ __decorate([
 ], PhysicalBookOperationController.prototype, "findAll", null);
 __decorate([
     (0, common_1.Patch)('entries'),
+    (0, roles_decorator_1.Roles)(client_1.Role.LIBRARIAN, client_1.Role.ADMIN),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
     __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [entrie_dto_1.EntrieDto]),
@@ -69,6 +77,8 @@ __decorate([
 ], PhysicalBookOperationController.prototype, "addEntries", null);
 __decorate([
     (0, common_1.Patch)('drops'),
+    (0, roles_decorator_1.Roles)(client_1.Role.LIBRARIAN, client_1.Role.ADMIN),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
     __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [drop_dto_1.DropDto]),
@@ -76,6 +86,8 @@ __decorate([
 ], PhysicalBookOperationController.prototype, "addDrops", null);
 __decorate([
     (0, common_1.Post)('loan'),
+    (0, roles_decorator_1.Roles)(client_1.Role.LIBRARIAN, client_1.Role.ADMIN),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
     __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [loan_dto_1.LoanDto]),
@@ -84,6 +96,8 @@ __decorate([
 __decorate([
     (0, common_1.Patch)('settle/:id'),
     (0, common_1.HttpCode)(common_1.HttpStatus.OK),
+    (0, roles_decorator_1.Roles)(client_1.Role.LIBRARIAN, client_1.Role.ADMIN),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
     __param(0, (0, common_1.Param)('id')),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Object]),
@@ -91,6 +105,8 @@ __decorate([
 ], PhysicalBookOperationController.prototype, "settle", null);
 __decorate([
     (0, common_1.Get)('loan'),
+    (0, roles_decorator_1.Roles)(client_1.Role.LIBRARIAN, client_1.Role.ADMIN),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
     __param(0, (0, common_1.Query)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Object]),
@@ -98,6 +114,8 @@ __decorate([
 ], PhysicalBookOperationController.prototype, "findAllLoans", null);
 __decorate([
     (0, common_1.Get)(':id'),
+    (0, roles_decorator_1.Roles)(client_1.Role.LIBRARIAN, client_1.Role.ADMIN),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
     __param(0, (0, common_1.Param)('id')),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
@@ -105,6 +123,8 @@ __decorate([
 ], PhysicalBookOperationController.prototype, "findOne", null);
 __decorate([
     (0, common_1.Patch)(':id'),
+    (0, roles_decorator_1.Roles)(client_1.Role.LIBRARIAN, client_1.Role.ADMIN),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
     __param(0, (0, common_1.Param)('id')),
     __param(1, (0, common_1.Body)()),
     __metadata("design:type", Function),
@@ -113,6 +133,8 @@ __decorate([
 ], PhysicalBookOperationController.prototype, "update", null);
 __decorate([
     (0, common_1.Delete)(':id'),
+    (0, roles_decorator_1.Roles)(client_1.Role.LIBRARIAN, client_1.Role.ADMIN),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
     __param(0, (0, common_1.Param)('id')),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),

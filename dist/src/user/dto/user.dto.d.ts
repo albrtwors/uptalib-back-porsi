@@ -1,7 +1,7 @@
 export declare enum Role {
     USER = "USER",
     ADMIN = "ADMIN",
-    SUPERADMIN = "SUPERADMIN"
+    LIBRARIAN = "LIBRARIAN"
 }
 export declare class CreateUserDto {
     name: string;

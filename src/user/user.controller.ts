@@ -50,8 +50,7 @@ export class UsersController {
   }
 
   @Patch('role/:id')
-  @Roles(Role.ADMIN)
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard)
   async updateRole(
     @Param('id', ParseIntPipe) id: number,
     @Body('role') role: Role,

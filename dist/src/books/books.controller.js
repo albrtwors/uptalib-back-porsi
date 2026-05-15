@@ -25,7 +25,6 @@ const client_1 = require("@prisma/client");
 const platform_express_1 = require("@nestjs/platform-express");
 const multer_1 = require("multer");
 const path_1 = __importDefault(require("path"));
-const storage_1 = require("./utils/storage");
 const uploadFile_1 = require("../utils/uploadFile");
 const deleteFile_1 = require("../utils/deleteFile");
 let BookController = class BookController {
@@ -77,7 +76,7 @@ let BookController = class BookController {
         }
         let updateData = data;
         if (pdfFile) {
-            const sanitizedTitle = existingBook.title || data.title
+            const sanitizedTitle = existingBook.title != data.title ? data.title : existingBook.title
                 .toLowerCase()
                 .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
                 .replace(/[^a-z0-9]/g, '_')
@@ -127,7 +126,7 @@ __decorate([
 ], BookController.prototype, "findOne", null);
 __decorate([
     (0, common_1.Post)(),
-    (0, roles_decorator_1.Roles)(client_1.Role.SUPERADMIN, client_1.Role.ADMIN),
+    (0, roles_decorator_1.Roles)(client_1.Role.LIBRARIAN, client_1.Role.ADMIN),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
     (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)('pdf', { storage: (0, multer_1.memoryStorage)() })),
     __param(0, (0, common_1.Body)()),
@@ -139,7 +138,7 @@ __decorate([
 ], BookController.prototype, "create", null);
 __decorate([
     (0, common_1.Delete)(':id'),
-    (0, roles_decorator_1.Roles)(client_1.Role.SUPERADMIN, client_1.Role.ADMIN),
+    (0, roles_decorator_1.Roles)(client_1.Role.LIBRARIAN, client_1.Role.ADMIN),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
     __param(0, (0, common_1.Param)('id', common_1.ParseIntPipe)),
     __param(1, (0, common_1.Req)()),
@@ -149,9 +148,9 @@ __decorate([
 ], BookController.prototype, "delete", null);
 __decorate([
     (0, common_1.Patch)(':id'),
-    (0, roles_decorator_1.Roles)(client_1.Role.SUPERADMIN, client_1.Role.ADMIN),
+    (0, roles_decorator_1.Roles)(client_1.Role.LIBRARIAN, client_1.Role.ADMIN),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
-    (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)('pdf', storage_1.storageFor1File)),
+    (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)('pdf', { storage: (0, multer_1.memoryStorage)() })),
     __param(0, (0, common_1.Param)('id', common_1.ParseIntPipe)),
     __param(1, (0, common_1.Body)()),
     __param(2, (0, common_1.UploadedFile)()),

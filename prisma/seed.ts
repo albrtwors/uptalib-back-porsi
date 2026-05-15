@@ -15,7 +15,7 @@ async function main() {
             email: 'flbertojgsoto@gmail.com',
             name: 'albrtwors',
             password: hashed,
-            role: 'SUPERADMIN'
+            role: 'ADMIN'
 
         },
     });

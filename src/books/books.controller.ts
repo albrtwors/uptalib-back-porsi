@@ -41,7 +41,7 @@ export class BookController {
 
 
   @Post()
-  @Roles(Role.SUPERADMIN, Role.ADMIN)
+  @Roles(Role.LIBRARIAN, Role.ADMIN)
   @UseGuards(JwtAuthGuard, RolesGuard)
   @UseInterceptors(FileInterceptor('pdf', { storage: memoryStorage() })) // 2. Forzar almacenamiento en memoria
   async create(
@@ -71,7 +71,7 @@ export class BookController {
   //accept=".pdf"
 
   @Delete(':id')
-  @Roles(Role.SUPERADMIN, Role.ADMIN)
+  @Roles(Role.LIBRARIAN, Role.ADMIN)
   @UseGuards(JwtAuthGuard, RolesGuard)
   async delete(@Param('id', ParseIntPipe) id: number, @Req() req: any) {
 
@@ -101,9 +101,9 @@ export class BookController {
 
 
   @Patch(':id') // Solo ADMIN actualiza
-  @Roles(Role.SUPERADMIN, Role.ADMIN)
+  @Roles(Role.LIBRARIAN, Role.ADMIN)
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @UseInterceptors(FileInterceptor('pdf', storageFor1File))
+  @UseInterceptors(FileInterceptor('pdf', { storage: memoryStorage() })) // 2. Forzar almacenamiento en memoria
   async edit(
     @Param('id', ParseIntPipe) id: number,
     @Body() data: any,
@@ -121,7 +121,7 @@ export class BookController {
     let updateData: any = data;
 
     if (pdfFile) {
-      const sanitizedTitle = existingBook.title || data.title
+      const sanitizedTitle = existingBook.title != data.title ? data.title : existingBook.title
         .toLowerCase()
         .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // Quita acentos si los hay
         .replace(/[^a-z0-9]/g, '_')

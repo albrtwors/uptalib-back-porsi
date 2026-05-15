@@ -15,7 +15,7 @@ var Role;
 (function (Role) {
     Role["USER"] = "USER";
     Role["ADMIN"] = "ADMIN";
-    Role["SUPERADMIN"] = "SUPERADMIN";
+    Role["LIBRARIAN"] = "LIBRARIAN";
 })(Role || (exports.Role = Role = {}));
 class CreateUserDto {
 }

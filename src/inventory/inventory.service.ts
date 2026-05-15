@@ -13,8 +13,6 @@ import { UpdateInventory } from './dto/update-inventory.dto';
 export class InventoryService {
   constructor(private prisma: PrismaService) { }
   async create(createInventoryDto: CreateInventoryDto) {
-    const type = await this.prisma.itemType.findUnique({ where: { id: createInventoryDto.typeId } })
-    if (!type) return { status: 'error', message: 'Debes ingresar un tipo valido' }
 
     return { item: await this.prisma.item.create({ data: { typeId: createInventoryDto.typeId, name: createInventoryDto.name, description: createInventoryDto.description, code: createInventoryDto.code, availableStock: createInventoryDto.stock, totalStock: createInventoryDto.stock, status: 'DISPONIBLE' } }), message: 'Item añadido' };
   }
@@ -57,8 +55,6 @@ export class InventoryService {
 
   async edit(id: string, updateInventoryDto: UpdateInventory) {
 
-    const type = await this.prisma.itemType.findUnique({ where: { id: updateInventoryDto.typeId } })
-    if (!type) return { status: 'error', message: 'Debes ingresar un tipo valido' }
 
     return { item: await this.prisma.item.update({ where: { id }, data: { typeId: updateInventoryDto.typeId, name: updateInventoryDto.name, description: updateInventoryDto.description, code: updateInventoryDto.code, availableStock: updateInventoryDto.stock, totalStock: updateInventoryDto.stock, status: 'DISPONIBLE' } }), message: 'Item actualizado' };
   }

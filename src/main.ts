@@ -7,8 +7,8 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const cookieParser = require('cookie-parser')
   const localConfig = { origin: ['http://localhost:3000'], credentials: true }
-  const isLocal = false
-  app.enableCors(isLocal ? localConfig : {})
+  const isLocal = process.env.isLocal
+  app.enableCors(isLocal == 'true' ? localConfig : {})
   app.use(cookieParser())
 
   app.useGlobalPipes(new ValidationPipe({

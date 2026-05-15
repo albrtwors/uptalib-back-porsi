@@ -7,7 +7,9 @@ const swagger_1 = require("@nestjs/swagger");
 async function bootstrap() {
     const app = await core_1.NestFactory.create(app_module_1.AppModule);
     const cookieParser = require('cookie-parser');
-    app.enableCors({ origin: ['http://localhost:3001'], credentials: true });
+    const localConfig = { origin: ['http://localhost:3000'], credentials: true };
+    const isLocal = process.env.isLocal;
+    app.enableCors(isLocal == 'true' ? localConfig : {});
     app.use(cookieParser());
     app.useGlobalPipes(new common_1.ValidationPipe({
         whitelist: true,
@@ -21,7 +23,7 @@ async function bootstrap() {
         .build();
     const documentFactory = () => swagger_1.SwaggerModule.createDocument(app, config);
     swagger_1.SwaggerModule.setup('api', app, documentFactory);
-    await app.listen(process.env.PORT || 3000);
+    await app.listen(process.env.PORT || 3000, '0.0.0.0');
     console.log(`Aplicación corriendo en: ${await app.getUrl()}`);
 }
 bootstrap();

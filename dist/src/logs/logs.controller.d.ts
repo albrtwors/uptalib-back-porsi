@@ -9,8 +9,8 @@ export declare class LogsController {
         data: ({
             user: {
                 id: number;
-                name: string;
                 email: string;
+                name: string;
                 password: string;
                 isBlocked: boolean;
                 role: import(".prisma/client").$Enums.Role;

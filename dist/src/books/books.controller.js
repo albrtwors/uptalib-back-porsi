@@ -11,6 +11,9 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 var __param = (this && this.__param) || function (paramIndex, decorator) {
     return function (target, key) { decorator(target, key, paramIndex); }
 };
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.BookController = void 0;
 const common_1 = require("@nestjs/common");
@@ -20,9 +23,11 @@ const roles_guard_1 = require("../auth/guards/roles.guard");
 const roles_decorator_1 = require("../auth/decorators/roles.decorator");
 const client_1 = require("@prisma/client");
 const platform_express_1 = require("@nestjs/platform-express");
-const fs_1 = require("fs");
-const path_1 = require("path");
+const multer_1 = require("multer");
+const path_1 = __importDefault(require("path"));
 const storage_1 = require("./utils/storage");
+const uploadFile_1 = require("../utils/uploadFile");
+const deleteFile_1 = require("../utils/deleteFile");
 let BookController = class BookController {
     constructor(bookService) {
         this.bookService = bookService;
@@ -36,24 +41,33 @@ let BookController = class BookController {
     findOne(id) {
         return this.bookService.findOne(id);
     }
-    create(data, req, file) {
-        const filePath = `/public/uploads/pdf/${file.filename}`;
-        return this.bookService.create({ ...data, routepdf: filePath }, req);
+    async create(data, req, file) {
+        if (!file) {
+            throw new Error('No se ha subido ningún archivo');
+        }
+        const sanitizedTitle = data.title
+            .toLowerCase()
+            .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+            .replace(/[^a-z0-9]/g, '_')
+            .replace(/_+/g, '_');
+        const fileExt = path_1.default.extname(file.originalname) || '.pdf';
+        const newFileName = `${sanitizedTitle}${fileExt}`;
+        const finalPath = await (0, uploadFile_1.uploadFile)(file, 'pdfs', newFileName);
+        console.log(finalPath);
+        return this.bookService.create({ ...data, routepdf: finalPath }, req);
     }
     async delete(id, req) {
         const book = await this.bookService.findOne(id);
         if (!book) {
             throw new common_1.NotFoundException('El libro no existe');
         }
-        const filePaths = [book.routepdf, book.routeimg];
-        filePaths.forEach((path) => {
-            if (path) {
-                const fullPath = (0, path_1.join)(process.cwd(), path);
-                if ((0, fs_1.existsSync)(fullPath)) {
-                    (0, fs_1.unlinkSync)(fullPath);
-                }
+        if (book && book.routepdf) {
+            const bucketName = 'pdfs';
+            const supabasePath = book.routepdf.split(`${bucketName}/`)[1];
+            if (supabasePath) {
+                await (0, deleteFile_1.deleteFile)(supabasePath, 'pdfs');
             }
-        });
+        }
         return this.bookService.delete(id, req);
     }
     async edit(id, data, pdfFile, req) {
@@ -63,16 +77,15 @@ let BookController = class BookController {
         }
         let updateData = data;
         if (pdfFile) {
-            const filePaths = [existingBook.routepdf];
-            filePaths.forEach((path) => {
-                if (path) {
-                    const fullPath = (0, path_1.join)(process.cwd(), path);
-                    if ((0, fs_1.existsSync)(fullPath)) {
-                        (0, fs_1.unlinkSync)(fullPath);
-                    }
-                }
-            });
-            updateData = { ...data, routepdf: `/public/uploads/pdf/${pdfFile.filename}` };
+            const sanitizedTitle = existingBook.title || data.title
+                .toLowerCase()
+                .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+                .replace(/[^a-z0-9]/g, '_')
+                .replace(/_+/g, '_');
+            const fileExt = path_1.default.extname(pdfFile.originalname) || '.pdf';
+            const newFileName = `${sanitizedTitle}${fileExt}`;
+            const finalPath = await (0, uploadFile_1.uploadFile)(pdfFile, 'pdfs', newFileName);
+            updateData = { ...data, routepdf: finalPath };
         }
         return this.bookService.edit(id, updateData, req);
     }
@@ -116,13 +129,13 @@ __decorate([
     (0, common_1.Post)(),
     (0, roles_decorator_1.Roles)(client_1.Role.SUPERADMIN, client_1.Role.ADMIN),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
-    (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)('pdf', storage_1.storageFor1File)),
+    (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)('pdf', { storage: (0, multer_1.memoryStorage)() })),
     __param(0, (0, common_1.Body)()),
     __param(1, (0, common_1.Req)()),
     __param(2, (0, common_1.UploadedFile)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Object, Object, Object]),
-    __metadata("design:returntype", void 0)
+    __metadata("design:returntype", Promise)
 ], BookController.prototype, "create", null);
 __decorate([
     (0, common_1.Delete)(':id'),

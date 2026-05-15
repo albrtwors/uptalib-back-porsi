@@ -58,7 +58,7 @@ export class BookService {
 
   async delete(id: number, req: any) {
     const book = await this.prisma.book.findFirst({ where: { id } })
-
+    await this.prisma.savedBook.deleteMany({ where: { bookId: id } })
     await this.prisma.operation.create({ data: { userId: req.user.userId, ip: req.ip, action: `Eliminó el libro Digital ${book.title}` } })
     return { book: await this.prisma.book.delete({ where: { id } }), message: 'Libro Eliminado' }
   }

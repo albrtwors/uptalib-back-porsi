@@ -18,9 +18,6 @@ let InventoryService = class InventoryService {
         this.prisma = prisma;
     }
     async create(createInventoryDto) {
-        const type = await this.prisma.itemType.findUnique({ where: { id: createInventoryDto.typeId } });
-        if (!type)
-            return { status: 'error', message: 'Debes ingresar un tipo valido' };
         return { item: await this.prisma.item.create({ data: { typeId: createInventoryDto.typeId, name: createInventoryDto.name, description: createInventoryDto.description, code: createInventoryDto.code, availableStock: createInventoryDto.stock, totalStock: createInventoryDto.stock, status: 'DISPONIBLE' } }), message: 'Item añadido' };
     }
     async findAll(query) {
@@ -52,9 +49,6 @@ let InventoryService = class InventoryService {
         return `This action returns a #${id} inventorsyss`;
     }
     async edit(id, updateInventoryDto) {
-        const type = await this.prisma.itemType.findUnique({ where: { id: updateInventoryDto.typeId } });
-        if (!type)
-            return { status: 'error', message: 'Debes ingresar un tipo valido' };
         return { item: await this.prisma.item.update({ where: { id }, data: { typeId: updateInventoryDto.typeId, name: updateInventoryDto.name, description: updateInventoryDto.description, code: updateInventoryDto.code, availableStock: updateInventoryDto.stock, totalStock: updateInventoryDto.stock, status: 'DISPONIBLE' } }), message: 'Item actualizado' };
     }
     async delete(id) {

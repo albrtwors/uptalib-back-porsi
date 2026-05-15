@@ -8,19 +8,19 @@ export declare class PhysicalBooksService {
         status: string;
         message: string;
         data: {
-            status: import(".prisma/client").$Enums.BookStatus;
             id: string;
-            isbn: string | null;
             title: string;
-            pnf: import(".prisma/client").$Enums.Pnf | null;
-            yearOfPublication: number;
-            editorial: string | null;
-            totalStock: number;
-            availableStock: number;
             createdAt: Date;
             updatedAt: Date;
+            totalStock: number;
+            availableStock: number;
+            status: import(".prisma/client").$Enums.BookStatus;
+            isbn: string | null;
+            yearOfPublication: number;
             authorId: string;
             categoryId: string;
+            pnf: import(".prisma/client").$Enums.Pnf | null;
+            editorial: string | null;
         };
     }>;
     findAll(query: any): Promise<{
@@ -34,19 +34,19 @@ export declare class PhysicalBooksService {
                 name: string;
             };
         } & {
-            status: import(".prisma/client").$Enums.BookStatus;
             id: string;
-            isbn: string | null;
             title: string;
-            pnf: import(".prisma/client").$Enums.Pnf | null;
-            yearOfPublication: number;
-            editorial: string | null;
-            totalStock: number;
-            availableStock: number;
             createdAt: Date;
             updatedAt: Date;
+            totalStock: number;
+            availableStock: number;
+            status: import(".prisma/client").$Enums.BookStatus;
+            isbn: string | null;
+            yearOfPublication: number;
             authorId: string;
             categoryId: string;
+            pnf: import(".prisma/client").$Enums.Pnf | null;
+            editorial: string | null;
         })[];
         totalPages: number;
     }>;
@@ -56,19 +56,19 @@ export declare class PhysicalBooksService {
         message: string;
         data: {
             difference: number;
-            status: import(".prisma/client").$Enums.BookStatus;
             id: string;
-            isbn: string | null;
             title: string;
-            pnf: import(".prisma/client").$Enums.Pnf | null;
-            yearOfPublication: number;
-            editorial: string | null;
-            totalStock: number;
-            availableStock: number;
             createdAt: Date;
             updatedAt: Date;
+            totalStock: number;
+            availableStock: number;
+            status: import(".prisma/client").$Enums.BookStatus;
+            isbn: string | null;
+            yearOfPublication: number;
             authorId: string;
             categoryId: string;
+            pnf: import(".prisma/client").$Enums.Pnf | null;
+            editorial: string | null;
         };
     }>;
     remove(id: string): Promise<{

@@ -7,12 +7,14 @@ import { Role } from '@prisma/client';
 import { CreateBookDto } from './dto/create-book.dto';
 import { UpdateBookDto } from './dto/update-book.dto';
 import { FileFieldsInterceptor, FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
-import { diskStorage } from 'multer';
-import { extname } from 'path';
+import { diskStorage, memoryStorage } from 'multer';
+import path, { extname } from 'path';
 import { randomUUID, UUID } from 'crypto';
 import { existsSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import { storageFor1File } from './utils/storage';
+import { uploadFile } from '../utils/uploadFile';
+import { deleteFile } from '../utils/deleteFile';
 @Controller('book')
 export class BookController {
   constructor(private bookService: BookService) { }
@@ -38,13 +40,29 @@ export class BookController {
 
 
 
-  @Post() // Solo ADMIN sube libros
+  @Post()
   @Roles(Role.SUPERADMIN, Role.ADMIN)
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @UseInterceptors(FileInterceptor('pdf', storageFor1File))
-  create(@Body() data: any, @Req() req, @UploadedFile() file: Express.Multer.File) {
-    const filePath = `/public/uploads/pdf/${file.filename}`;
-    return this.bookService.create({ ...data, routepdf: filePath }, req);
+  @UseInterceptors(FileInterceptor('pdf', { storage: memoryStorage() })) // 2. Forzar almacenamiento en memoria
+  async create(
+    @Body() data: any,
+    @Req() req,
+    @UploadedFile() file: Express.Multer.File
+  ) {
+    if (!file) {
+      throw new Error('No se ha subido ningún archivo');
+    }
+    const sanitizedTitle = data.title
+      .toLowerCase()
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // Quita acentos si los hay
+      .replace(/[^a-z0-9]/g, '_')
+      .replace(/_+/g, '_');
+
+    const fileExt = path.extname(file.originalname) || '.pdf';
+    const newFileName = `${sanitizedTitle}${fileExt}`;
+    const finalPath = await uploadFile(file, 'pdfs', newFileName);
+    console.log(finalPath)
+    return this.bookService.create({ ...data, routepdf: finalPath }, req);
   }
 
 
@@ -63,19 +81,20 @@ export class BookController {
       throw new NotFoundException('El libro no existe');
     }
 
+    if (book && book.routepdf) {
+      const bucketName = 'pdfs';
 
-    const filePaths = [book.routepdf, book.routeimg];
+      // Extrae todo lo que esté después del nombre del bucket
+      // "https://.../public/tu-bucket/pdfs/libro.pdf" -> "pdfs/libro.pdf"
+      const supabasePath = book.routepdf.split(`${bucketName}/`)[1];
 
-    filePaths.forEach((path) => {
-      if (path) {
-
-        const fullPath = join(process.cwd(), path);
-
-        if (existsSync(fullPath)) {
-          unlinkSync(fullPath);
-        }
+      if (supabasePath) {
+        // Llamamos a la función de eliminación en la nube
+        await deleteFile(supabasePath, 'pdfs');
       }
-    });
+    }
+
+
 
     return this.bookService.delete(id, req);
   }
@@ -102,17 +121,16 @@ export class BookController {
     let updateData: any = data;
 
     if (pdfFile) {
-      // Eliminar archivos antiguos si existen
-      const filePaths = [existingBook.routepdf];
-      filePaths.forEach((path) => {
-        if (path) {
-          const fullPath = join(process.cwd(), path);
-          if (existsSync(fullPath)) {
-            unlinkSync(fullPath);
-          }
-        }
-      });
-      updateData = { ...data, routepdf: `/public/uploads/pdf/${pdfFile.filename}` };
+      const sanitizedTitle = existingBook.title || data.title
+        .toLowerCase()
+        .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // Quita acentos si los hay
+        .replace(/[^a-z0-9]/g, '_')
+        .replace(/_+/g, '_');
+
+      const fileExt = path.extname(pdfFile.originalname) || '.pdf';
+      const newFileName = `${sanitizedTitle}${fileExt}`;
+      const finalPath = await uploadFile(pdfFile, 'pdfs', newFileName);
+      updateData = { ...data, routepdf: finalPath };
     }
 
     return this.bookService.edit(id, updateData, req);

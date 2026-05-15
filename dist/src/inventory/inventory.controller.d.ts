@@ -5,24 +5,19 @@ export declare class InventoryController {
     private readonly inventoryService;
     constructor(inventoryService: InventoryService);
     create(createInventoryDto: CreateInventoryDto, img: Express.Multer.File): Promise<{
-        status: string;
-        message: string;
-        item?: undefined;
-    } | {
         item: {
             id: string;
             name: string;
-            code: string | null;
             description: string | null;
-            totalStock: number;
-            availableStock: number;
-            status: import(".prisma/client").$Enums.ItemStatus;
             createdAt: Date;
             updatedAt: Date;
             typeId: string;
+            code: string | null;
+            totalStock: number;
+            availableStock: number;
+            status: import(".prisma/client").$Enums.ItemStatus;
         };
         message: string;
-        status?: undefined;
     }>;
     findAll(query: any): Promise<{
         data: ({
@@ -33,50 +28,45 @@ export declare class InventoryController {
         } & {
             id: string;
             name: string;
-            code: string | null;
             description: string | null;
-            totalStock: number;
-            availableStock: number;
-            status: import(".prisma/client").$Enums.ItemStatus;
             createdAt: Date;
             updatedAt: Date;
             typeId: string;
+            code: string | null;
+            totalStock: number;
+            availableStock: number;
+            status: import(".prisma/client").$Enums.ItemStatus;
         })[];
         totalPages: number;
     }>;
     findOne(id: string): string;
     edit(id: string, updateInventoryDto: EditItemInventory): Promise<{
-        status: string;
-        message: string;
-        item?: undefined;
-    } | {
         item: {
             id: string;
             name: string;
-            code: string | null;
             description: string | null;
-            totalStock: number;
-            availableStock: number;
-            status: import(".prisma/client").$Enums.ItemStatus;
             createdAt: Date;
             updatedAt: Date;
             typeId: string;
+            code: string | null;
+            totalStock: number;
+            availableStock: number;
+            status: import(".prisma/client").$Enums.ItemStatus;
         };
         message: string;
-        status?: undefined;
     }>;
     delete(id: string): Promise<{
         item: {
             id: string;
             name: string;
-            code: string | null;
             description: string | null;
-            totalStock: number;
-            availableStock: number;
-            status: import(".prisma/client").$Enums.ItemStatus;
             createdAt: Date;
             updatedAt: Date;
             typeId: string;
+            code: string | null;
+            totalStock: number;
+            availableStock: number;
+            status: import(".prisma/client").$Enums.ItemStatus;
         };
         message: string;
     }>;

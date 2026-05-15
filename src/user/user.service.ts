@@ -3,7 +3,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CreateUserDto } from './dto/user.dto';
 import * as bcrypt from 'bcrypt';
 import { Role } from '@prisma/client'; // Importamos el enum real de Prisma
-import { getPagination } from '@/functions/pagination/getPagination';
+import { getPagination } from '../functions/pagination/getPagination';
 
 @Injectable()
 export class UsersService {

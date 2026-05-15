@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { CreateLogDto } from './dto/create-log.dto';
 import { UpdateLogDto } from './dto/update-log.dto';
-import { getPagination } from '@/functions/pagination/getPagination';
+import { getPagination } from '../functions/pagination/getPagination';
+
 import { PrismaService } from 'prisma/prisma.service';
 
 @Injectable()

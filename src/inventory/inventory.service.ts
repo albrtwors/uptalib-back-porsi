@@ -3,7 +3,8 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService } from 'prisma/prisma.service';
 import { CreateItemInventory } from './dto/create-item-dto';
 import { EditItemInventory } from './dto/edit-item-dto';
-import { getPagination } from '@/functions/pagination/getPagination';
+import { getPagination } from '../functions/pagination/getPagination';
+
 import { CreateInventoryDto } from './dto/create-inventory.dto';
 import { UpdateInventory } from './dto/update-inventory.dto';
 

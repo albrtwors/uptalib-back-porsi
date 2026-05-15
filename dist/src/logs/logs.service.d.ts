@@ -9,8 +9,8 @@ export declare class LogsService {
         data: ({
             user: {
                 id: number;
-                email: string;
                 name: string;
+                email: string;
                 password: string;
                 isBlocked: boolean;
                 role: import(".prisma/client").$Enums.Role;

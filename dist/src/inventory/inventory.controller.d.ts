@@ -12,14 +12,14 @@ export declare class InventoryController {
         item: {
             id: string;
             name: string;
-            description: string | null;
-            createdAt: Date;
-            updatedAt: Date;
-            typeId: string;
             code: string | null;
+            description: string | null;
             totalStock: number;
             availableStock: number;
             status: import(".prisma/client").$Enums.ItemStatus;
+            createdAt: Date;
+            updatedAt: Date;
+            typeId: string;
         };
         message: string;
         status?: undefined;
@@ -33,14 +33,14 @@ export declare class InventoryController {
         } & {
             id: string;
             name: string;
-            description: string | null;
-            createdAt: Date;
-            updatedAt: Date;
-            typeId: string;
             code: string | null;
+            description: string | null;
             totalStock: number;
             availableStock: number;
             status: import(".prisma/client").$Enums.ItemStatus;
+            createdAt: Date;
+            updatedAt: Date;
+            typeId: string;
         })[];
         totalPages: number;
     }>;
@@ -53,14 +53,14 @@ export declare class InventoryController {
         item: {
             id: string;
             name: string;
-            description: string | null;
-            createdAt: Date;
-            updatedAt: Date;
-            typeId: string;
             code: string | null;
+            description: string | null;
             totalStock: number;
             availableStock: number;
             status: import(".prisma/client").$Enums.ItemStatus;
+            createdAt: Date;
+            updatedAt: Date;
+            typeId: string;
         };
         message: string;
         status?: undefined;
@@ -69,14 +69,14 @@ export declare class InventoryController {
         item: {
             id: string;
             name: string;
-            description: string | null;
-            createdAt: Date;
-            updatedAt: Date;
-            typeId: string;
             code: string | null;
+            description: string | null;
             totalStock: number;
             availableStock: number;
             status: import(".prisma/client").$Enums.ItemStatus;
+            createdAt: Date;
+            updatedAt: Date;
+            typeId: string;
         };
         message: string;
     }>;

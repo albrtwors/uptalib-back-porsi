@@ -2,7 +2,6 @@ import { BadRequestException, HttpException, HttpStatus, Injectable } from '@nes
 import { CreatePhysicalBookDto } from './dto/create-physical-book.dto';
 import { UpdatePhysicalBookDto } from './dto/update-physical-book.dto';
 import { PrismaService } from 'prisma/prisma.service';
-import { CreateBookDto } from '@/books/dto/create-book.dto';
 
 @Injectable()
 export class PhysicalBooksService {

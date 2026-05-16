@@ -9,9 +9,9 @@ import {
 } from "@nestjs/common";
 import { UserInventoryService } from "./user-inventory.service";
 import { CreateUserInventoryDto } from "./dto/create-user-inventory.dto";
-import { RolesGuard } from "@/auth/guards/roles.guard";
-import { Roles } from "@/auth/decorators/roles.decorator";
-import { Role } from "@/user/dto/user.dto";
+import { RolesGuard } from "../auth/guards/roles.guard";
+import { Roles } from "../auth/decorators/roles.decorator";
+import { Role } from "../user/dto/user.dto";
 
 @Controller("user-inventory")
 export class UserInventoryController {

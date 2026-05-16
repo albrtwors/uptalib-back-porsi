@@ -6,7 +6,7 @@ import { MakeLoanDto } from './dto/makeLoan.dto';
 import { EntrieDto } from './dto/entrie-dto';
 import { DropDto } from './dto/drop-dto';
 import { LoanDto } from './dto/loan-dto';
-import { Roles } from '@/auth/decorators/roles.decorator';
+import { Roles } from '../auth/decorators/roles.decorator';
 import { Role } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';

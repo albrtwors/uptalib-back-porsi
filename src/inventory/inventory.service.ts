@@ -7,6 +7,7 @@ import { getPagination } from '../functions/pagination/getPagination';
 
 import { CreateInventoryDto } from './dto/create-inventory.dto';
 import { UpdateInventory } from './dto/update-inventory.dto';
+import getStockDifference from '../utils/getDifference';
 
 
 @Injectable()
@@ -54,9 +55,14 @@ export class InventoryService {
   }
 
   async edit(id: string, updateInventoryDto: UpdateInventory) {
+    const existingItem = await this.prisma.item.findUnique({ where: { id }, include: { itemOperations: true } })
+
+    const newValue = getStockDifference({ oldAvailableStockValue: existingItem.availableStock, oldCurrentStockValue: existingItem.totalStock, newStockValue: updateInventoryDto.stock })
+
+    if (newValue < 0) return { status: 'error', message: "Hay préstamos pendientes que impiden que coloques un stock alto" }
 
 
-    return { item: await this.prisma.item.update({ where: { id }, data: { typeId: updateInventoryDto.typeId, name: updateInventoryDto.name, description: updateInventoryDto.description, code: updateInventoryDto.code, availableStock: updateInventoryDto.stock, totalStock: updateInventoryDto.stock, status: 'DISPONIBLE' } }), message: 'Item actualizado' };
+    return { item: await this.prisma.item.update({ where: { id }, data: { typeId: updateInventoryDto.typeId, name: updateInventoryDto.name, description: updateInventoryDto.description, code: updateInventoryDto.code, availableStock: updateInventoryDto.stock, totalStock: newValue, status: 'DISPONIBLE' } }), message: 'Item actualizado' };
   }
 
   async delete(id: string) {

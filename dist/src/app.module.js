@@ -23,6 +23,7 @@ const physical_book_operation_module_1 = require("./physical-book-operation/phys
 const item_type_module_1 = require("./item-type/item-type.module");
 const inventory_operation_module_1 = require("./inventory-operation/inventory-operation.module");
 const logs_module_1 = require("./logs/logs.module");
+const backup_module_1 = require("./backup/backup.module");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -48,6 +49,7 @@ exports.AppModule = AppModule = __decorate([
             item_type_module_1.ItemTypeModule,
             inventory_operation_module_1.InventoryOperationModule,
             logs_module_1.LogsModule,
+            backup_module_1.BackupModule,
         ],
         providers: [],
     })

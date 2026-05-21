@@ -8,10 +8,14 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.InventoryOperationService = void 0;
 const common_1 = require("@nestjs/common");
 const prisma_service_1 = require("../../prisma/prisma.service");
+const getDifference_1 = __importDefault(require("../utils/getDifference"));
 let InventoryOperationService = class InventoryOperationService {
     constructor(prisma) {
         this.prisma = prisma;
@@ -20,6 +24,10 @@ let InventoryOperationService = class InventoryOperationService {
         return 'This action adds a new inventoryOperation';
     }
     async addDrops(entriesDto) {
+        const existingItem = await this.prisma.item.findUnique({ where: { id: entriesDto.itemId } });
+        const newValue = (0, getDifference_1.default)({ newStockValue: existingItem.totalStock - entriesDto.quantity, oldCurrentStockValue: existingItem.totalStock, oldAvailableStockValue: existingItem.availableStock });
+        if (newValue < 0)
+            throw new common_1.BadRequestException('Hay prestamos pendientes, las bajas no pueden tener un valor superior a la cantidad de stock disponible');
         const book = await this.prisma.item.update({
             where: { id: entriesDto.itemId }, data: {
                 availableStock: {
@@ -42,6 +50,7 @@ let InventoryOperationService = class InventoryOperationService {
         return { status: 'success', message: 'Bajas añadidas' };
     }
     async addEntries(entriesDto) {
+        const existingItem = await this.prisma.item.findUnique({ where: { id: entriesDto.itemId } });
         const book = await this.prisma.item.update({
             where: { id: entriesDto.itemId }, data: {
                 availableStock: {
@@ -64,6 +73,9 @@ let InventoryOperationService = class InventoryOperationService {
         return { status: 'success', message: 'Entradas añadidas' };
     }
     async loan(itemLoan) {
+        const existingItem = await this.prisma.item.findUnique({ where: { id: itemLoan.itemId } });
+        if (existingItem.availableStock - itemLoan.quantity < 0)
+            throw new common_1.BadRequestException('No hay suficientes items para hacer el prestamo');
         const loan = await this.prisma.itemOperation.create({
             data: {
                 type: 'PRESTAMO',

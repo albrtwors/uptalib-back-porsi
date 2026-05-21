@@ -8,11 +8,15 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.InventoryService = void 0;
 const common_1 = require("@nestjs/common");
 const prisma_service_1 = require("../../prisma/prisma.service");
 const getPagination_1 = require("../functions/pagination/getPagination");
+const getDifference_1 = __importDefault(require("../utils/getDifference"));
 let InventoryService = class InventoryService {
     constructor(prisma) {
         this.prisma = prisma;
@@ -49,7 +53,11 @@ let InventoryService = class InventoryService {
         return `This action returns a #${id} inventorsyss`;
     }
     async edit(id, updateInventoryDto) {
-        return { item: await this.prisma.item.update({ where: { id }, data: { typeId: updateInventoryDto.typeId, name: updateInventoryDto.name, description: updateInventoryDto.description, code: updateInventoryDto.code, availableStock: updateInventoryDto.stock, totalStock: updateInventoryDto.stock, status: 'DISPONIBLE' } }), message: 'Item actualizado' };
+        const existingItem = await this.prisma.item.findUnique({ where: { id }, include: { itemOperations: true } });
+        const newValue = (0, getDifference_1.default)({ oldAvailableStockValue: existingItem.availableStock, oldCurrentStockValue: existingItem.totalStock, newStockValue: updateInventoryDto.stock });
+        if (newValue < 0)
+            return { status: 'error', message: "Hay préstamos pendientes que impiden que coloques un stock alto" };
+        return { item: await this.prisma.item.update({ where: { id }, data: { typeId: updateInventoryDto.typeId, name: updateInventoryDto.name, description: updateInventoryDto.description, code: updateInventoryDto.code, availableStock: updateInventoryDto.stock, totalStock: newValue, status: 'DISPONIBLE' } }), message: 'Item actualizado' };
     }
     async delete(id) {
         await this.prisma.itemOperation.deleteMany({ where: { itemId: id } });

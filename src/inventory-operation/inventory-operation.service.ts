@@ -1,10 +1,11 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { CreateInventoryOperationDto } from './dto/create-inventory-operation.dto';
 import { UpdateInventoryOperationDto } from './dto/update-inventory-operation.dto';
 import { PrismaService } from 'prisma/prisma.service';
 import { LoanDto } from './dto/loan-dto';
 import { EntrieDto } from './dto/entrie-dto';
 import { DropDto } from './dto/drop-dto';
+import getStockDifference from '../utils/getDifference';
 
 @Injectable()
 export class InventoryOperationService {
@@ -14,7 +15,14 @@ export class InventoryOperationService {
   }
 
   async addDrops(entriesDto: DropDto) {
+
+    const existingItem = await this.prisma.item.findUnique({ where: { id: entriesDto.itemId } })
+
+    const newValue = getStockDifference({ newStockValue: existingItem.totalStock - entriesDto.quantity, oldCurrentStockValue: existingItem.totalStock, oldAvailableStockValue: existingItem.availableStock })
+    if (newValue < 0) throw new BadRequestException('Hay prestamos pendientes, las bajas no pueden tener un valor superior a la cantidad de stock disponible')
+
     const book = await this.prisma.item.update({
+
       where: { id: entriesDto.itemId }, data: {
         availableStock: {
           decrement: entriesDto.quantity
@@ -40,7 +48,7 @@ export class InventoryOperationService {
   }
 
   async addEntries(entriesDto: EntrieDto) {
-
+    const existingItem = await this.prisma.item.findUnique({ where: { id: entriesDto.itemId } })
 
     const book = await this.prisma.item.update({
       where: { id: entriesDto.itemId }, data: {
@@ -69,6 +77,11 @@ export class InventoryOperationService {
 
 
   async loan(itemLoan: LoanDto) {
+
+    const existingItem = await this.prisma.item.findUnique({ where: { id: itemLoan.itemId } })
+
+    if (existingItem.availableStock - itemLoan.quantity < 0) throw new BadRequestException('No hay suficientes items para hacer el prestamo')
+
     const loan = await this.prisma.itemOperation.create({
       data: {
         type: 'PRESTAMO',

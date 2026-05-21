@@ -8,10 +8,14 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.PhysicalBookOperationService = void 0;
 const common_1 = require("@nestjs/common");
 const prisma_service_1 = require("../../prisma/prisma.service");
+const getDifference_1 = __importDefault(require("../utils/getDifference"));
 let PhysicalBookOperationService = class PhysicalBookOperationService {
     constructor(prisma) {
         this.prisma = prisma;
@@ -42,6 +46,10 @@ let PhysicalBookOperationService = class PhysicalBookOperationService {
         return { totalPages, data };
     }
     async addDrops(entriesDto) {
+        const existingBook = await this.prisma.physicalBook.findUnique({ where: { id: entriesDto.bookId } });
+        const newValue = (0, getDifference_1.default)({ newStockValue: existingBook.totalStock - entriesDto.quantity, oldCurrentStockValue: existingBook.totalStock, oldAvailableStockValue: existingBook.availableStock });
+        if (newValue < 0)
+            throw new common_1.BadRequestException('Hay prestamos pendientes, las bajas no pueden tener un valor superior a la cantidad de stock disponible');
         const book = await this.prisma.physicalBook.update({
             where: { id: entriesDto.bookId }, data: {
                 availableStock: {

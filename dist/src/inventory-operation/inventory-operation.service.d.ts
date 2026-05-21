@@ -28,28 +28,28 @@ export declare class InventoryOperationService {
         data: ({
             item: {
                 id: string;
-                name: string;
-                description: string | null;
                 createdAt: Date;
                 updatedAt: Date;
-                typeId: string;
+                name: string;
                 code: string | null;
+                description: string | null;
                 totalStock: number;
                 availableStock: number;
+                typeId: string;
                 status: import(".prisma/client").$Enums.ItemStatus;
             };
         } & {
             id: string;
-            createdAt: Date;
-            updatedAt: Date;
+            itemId: string;
             type: import(".prisma/client").$Enums.OperationType;
             quantity: number;
-            personNames: string;
-            personSurNames: string;
             observations: string | null;
             personId: string | null;
             wasSettled: boolean | null;
-            itemId: string;
+            personNames: string;
+            personSurNames: string;
+            createdAt: Date;
+            updatedAt: Date;
         })[];
         totalPages: number;
     }>;
@@ -57,28 +57,28 @@ export declare class InventoryOperationService {
         data: ({
             item: {
                 id: string;
-                name: string;
-                description: string | null;
                 createdAt: Date;
                 updatedAt: Date;
-                typeId: string;
+                name: string;
                 code: string | null;
+                description: string | null;
                 totalStock: number;
                 availableStock: number;
+                typeId: string;
                 status: import(".prisma/client").$Enums.ItemStatus;
             };
         } & {
             id: string;
-            createdAt: Date;
-            updatedAt: Date;
+            itemId: string;
             type: import(".prisma/client").$Enums.OperationType;
             quantity: number;
-            personNames: string;
-            personSurNames: string;
             observations: string | null;
             personId: string | null;
             wasSettled: boolean | null;
-            itemId: string;
+            personNames: string;
+            personSurNames: string;
+            createdAt: Date;
+            updatedAt: Date;
         })[];
         totalPages: number;
     }>;

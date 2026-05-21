@@ -17,6 +17,7 @@ import { LogsModule } from './logs/logs.module';
 import { SupabaseService } from './supabase/supabase.service';
 import { SupabaseModule } from './supabase/supabase.module';
 import { FilesService } from './files/files.service';
+import { BackupModule } from './backup/backup.module';
 @Module({
   imports: [
     ServeStaticModule.forRoot({
@@ -39,6 +40,7 @@ import { FilesService } from './files/files.service';
     ItemTypeModule,
     InventoryOperationModule,
     LogsModule,
+    BackupModule,
 
   ],
   providers: [],

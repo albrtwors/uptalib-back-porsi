@@ -5,6 +5,7 @@ import { PrismaService } from 'prisma/prisma.service';
 import { DropDto } from './dto/drop-dto';
 import { EntrieDto } from './dto/entrie-dto';
 import { LoanDto } from './dto/loan-dto';
+import getStockDifference from '../utils/getDifference';
 
 @Injectable()
 export class PhysicalBookOperationService {
@@ -48,6 +49,10 @@ export class PhysicalBookOperationService {
   }
 
   async addDrops(entriesDto: DropDto) {
+    const existingBook = await this.prisma.physicalBook.findUnique({ where: { id: entriesDto.bookId } })
+    const newValue = getStockDifference({ newStockValue: existingBook.totalStock - entriesDto.quantity, oldCurrentStockValue: existingBook.totalStock, oldAvailableStockValue: existingBook.availableStock })
+    if (newValue < 0) throw new BadRequestException('Hay prestamos pendientes, las bajas no pueden tener un valor superior a la cantidad de stock disponible')
+
     const book = await this.prisma.physicalBook.update({
       where: { id: entriesDto.bookId }, data: {
         availableStock: {

@@ -97,36 +97,13 @@ export class BookController {
   @Roles(Role.LIBRARIAN, Role.ADMIN)
   @UseGuards(JwtAuthGuard, RolesGuard)
   @UseInterceptors(FileInterceptor('pdf', { storage: memoryStorage() })) // 2. Forzar almacenamiento en memoria
-  async edit(
+  async update(
     @Param('id', ParseIntPipe) id: number,
-    @Body() data: any,
-    @UploadedFile() pdfFile: Express.Multer.File, @Req() req: any
-
+    @Body() data: { title?: string; routepdf?: string;[key: string]: any },
+    @Req() req
   ) {
-    // Obtener el libro existente para eliminar archivos antiguos
-    const existingBook = await this.bookService.findOne(id);
-
-    if (!existingBook) {
-      throw new NotFoundException('El libro no existe');
-    }
-
-    // Preparar datos para actualizar
-    let updateData: any = data;
-
-    if (pdfFile) {
-      const sanitizedTitle = existingBook.title != data.title ? data.title : existingBook.title
-        .toLowerCase()
-        .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // Quita acentos si los hay
-        .replace(/[^a-z0-9]/g, '_')
-        .replace(/_+/g, '_');
-
-      const fileExt = path.extname(pdfFile.originalname) || '.pdf';
-      const newFileName = `${sanitizedTitle}${fileExt}`;
-      const finalPath = await uploadFile(pdfFile, 'pdfs', newFileName);
-      updateData = { ...data, routepdf: finalPath };
-    }
-
-    return this.bookService.edit(id, updateData, req);
+    // Mandamos el ID y el cuerpo directamente al servicio
+    return this.bookService.edit(id, data, req);
   }
 
 

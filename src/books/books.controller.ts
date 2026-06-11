@@ -45,26 +45,19 @@ export class BookController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @UseInterceptors(FileInterceptor('pdf', { storage: memoryStorage() })) // 2. Forzar almacenamiento en memoria
   async create(
-    @Body() data: any,
-    @Req() req,
-    @UploadedFile() file: Express.Multer.File
+    @Body() data: any, // Recibe el JSON del Front
+    @Req() req
   ) {
-    if (!file) {
-      throw new Error('No se ha subido ningún archivo');
+    // Validación básica de seguridad por si acaso
+    if (!data.routepdf) {
+      throw new Error('La ruta del PDF es requerida para registrar el libro');
     }
-    const sanitizedTitle = data.title
-      .toLowerCase()
-      .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // Quita acentos si los hay
-      .replace(/[^a-z0-9]/g, '_')
-      .replace(/_+/g, '_');
 
-    const fileExt = path.extname(file.originalname) || '.pdf';
-    const newFileName = `${sanitizedTitle}${fileExt}`;
-    const finalPath = await uploadFile(file, 'pdfs', newFileName);
-    console.log(finalPath)
-    return this.bookService.create({ ...data, routepdf: finalPath }, req);
+    console.log('Registrando libro en la base de datos con URL:', data.routepdf);
+
+    // Mandamos directamente todo el objeto (que ya trae el 'routepdf') al servicio
+    return this.bookService.create(data, req);
   }
-
 
 
 

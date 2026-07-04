@@ -6,8 +6,6 @@
 
 generator client {
   provider = "prisma-client-js"
-  //engineType      = "library"
-  //  engineType="binary"
 }
 
 datasource db {
@@ -123,27 +121,22 @@ enum Role {
   ADMIN
 }
 
-// ... Tus modelos Category, Author y PhysicalBook quedan exactamente igual
-
 model Author {
   id            String         @id @default(cuid())
   name          String
   physicalBooks PhysicalBook[]
-  books         Book[] // 👈 RELACIÓN NUEVA: Un autor puede tener muchos libros digitales
+  // 💡 Vinculado de forma segura sin alterar base de datos física
+  books         Book[]         @relation("BookToAuthor")
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
 }
 
-// ... Modelos de operaciones, inventarios y usuarios quedan igual
-
 model Book {
-  id    Int    @id @default(autoincrement())
-  title String
-
-  // 🚫 pnf Pnf @default(GENERAL) <- ESTO SE ELIMINA (Lo haremos abajo)
-  pnfs    BookPnf[] // 👈 RELACIÓN NUEVA: Muchos PNF por libro (Tabla intermedia explícita o enum compuesto)
-  authors Author[] // 👈 RELACIÓN NUEVA: Relación implícita muchos a muchos con el Author del físico
-
+  id          Int         @id @default(autoincrement())
+  title       String
+  pnfs        BookPnf[]
+  // 💡 Vinculado de forma segura para resolver el include de TypeScript
+  authors     Author[]    @relation("BookToAuthor")
   description String?
   routepdf    String
   routeimg    String?
@@ -152,8 +145,7 @@ model Book {
   savedby     SavedBook[]
 }
 
-// 💡 Tabla intermedia para Book y Pnf. 
-// Usamos un modelo explícito para que puedas asociar múltiples Enums de Pnf a un mismo libro de forma limpia.
+// Tabla intermedia para Book y Pnf. 
 model BookPnf {
   id        String   @id @default(cuid())
   bookId    Int
@@ -161,14 +153,14 @@ model BookPnf {
   book      Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
 
-  @@unique([bookId, pnf]) // Evita que se repita el mismo PNF en el mismo libro
+  @@unique([bookId, pnf])
 }
 
 model SavedBook {
   id      Int      @id @default(autoincrement())
   saveeAt DateTime @default(now())
 
-  book   Book @relation(fields: [bookId], references: [id]) // Cambiado a singular
+  book   Book @relation(fields: [bookId], references: [id])
   bookId Int
 
   user   User @relation(fields: [userId], references: [id])

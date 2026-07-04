@@ -13,7 +13,7 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-//libros fisicos
+// Libros físicos
 
 model Category {
   id            String         @id @default(cuid())
@@ -102,7 +102,7 @@ enum OperationType {
   AJUSTE
 }
 
-//usuarios,roles y libros guardados xd
+// Usuarios, roles y libros guardados
 
 model User {
   id         Int         @id @default(autoincrement())
@@ -125,8 +125,7 @@ model Author {
   id            String         @id @default(cuid())
   name          String
   physicalBooks PhysicalBook[]
-  // 💡 Vinculado de forma segura sin alterar base de datos física
-  books         Book[]         @relation("BookToAuthor")
+  books         Book[] // 💡 Cambiado: Relación implícita limpia para alinearse al orden alfabético de Postgres
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
 }
@@ -135,8 +134,7 @@ model Book {
   id          Int         @id @default(autoincrement())
   title       String
   pnfs        BookPnf[]
-  // 💡 Vinculado de forma segura para resolver el include de TypeScript
-  authors     Author[]    @relation("BookToAuthor")
+  authors     Author[] // 💡 Cambiado: Relación implícita limpia para alinearse al orden alfabético de Postgres
   description String?
   routepdf    String
   routeimg    String?
@@ -145,7 +143,7 @@ model Book {
   savedby     SavedBook[]
 }
 
-// Tabla intermedia para Book y Pnf. 
+// Tabla intermedia para Book y Pnf
 model BookPnf {
   id        String   @id @default(cuid())
   bookId    Int
@@ -172,7 +170,7 @@ model SavedBook {
   @@unique([userId, bookId])
 }
 
-//inventario
+// Inventario
 
 model Item {
   id             String     @id @default(cuid())

@@ -144,6 +144,35 @@ let UsersService = class UsersService {
         const { password, ...result } = user;
         return result;
     }
+    async updateMe(id, updateDto) {
+        const user = await this.prisma.user.findUnique({ where: { id } });
+        if (!user)
+            throw new common_1.NotFoundException('Usuario no encontrado');
+        const dataToUpdate = {};
+        if (updateDto.name)
+            dataToUpdate.name = updateDto.name;
+        if (updateDto.email && updateDto.email !== user.email) {
+            const emailExists = await this.prisma.user.findUnique({ where: { email: updateDto.email } });
+            if (emailExists)
+                throw new common_1.ConflictException('El correo ya se encuentra registrado');
+            dataToUpdate.email = updateDto.email;
+        }
+        if (updateDto.password && updateDto.password.trim() !== "") {
+            const salt = await bcrypt.genSalt(10);
+            dataToUpdate.password = await bcrypt.hash(updateDto.password, salt);
+        }
+        const updatedUser = await this.prisma.user.update({
+            where: { id },
+            data: dataToUpdate,
+            select: {
+                id: true,
+                name: true,
+                email: true,
+                role: true,
+            }
+        });
+        return { message: 'Perfil actualizado con éxito', user: updatedUser };
+    }
 };
 exports.UsersService = UsersService;
 exports.UsersService = UsersService = __decorate([

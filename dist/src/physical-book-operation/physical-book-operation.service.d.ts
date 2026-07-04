@@ -11,16 +11,16 @@ export declare class PhysicalBookOperationService {
         totalPages: number;
         data: {
             id: string;
+            createdAt: Date;
+            updatedAt: Date;
             bookId: string;
             type: import(".prisma/client").$Enums.OperationType;
             quantity: number;
+            personNames: string;
+            personSurNames: string;
             observations: string | null;
             personId: string | null;
             wasSettled: boolean | null;
-            personNames: string;
-            personSurNames: string;
-            createdAt: Date;
-            updatedAt: Date;
         }[];
     }>;
     addDrops(entriesDto: DropDto): Promise<{
@@ -34,16 +34,16 @@ export declare class PhysicalBookOperationService {
     findAllLoans(query: any): Promise<{
         data: {
             id: string;
+            createdAt: Date;
+            updatedAt: Date;
             bookId: string;
             type: import(".prisma/client").$Enums.OperationType;
             quantity: number;
+            personNames: string;
+            personSurNames: string;
             observations: string | null;
             personId: string | null;
             wasSettled: boolean | null;
-            personNames: string;
-            personSurNames: string;
-            createdAt: Date;
-            updatedAt: Date;
         }[];
         totalPages: number;
     }>;
@@ -56,16 +56,16 @@ export declare class PhysicalBookOperationService {
         message: string;
         loan: {
             id: string;
+            createdAt: Date;
+            updatedAt: Date;
             bookId: string;
             type: import(".prisma/client").$Enums.OperationType;
             quantity: number;
+            personNames: string;
+            personSurNames: string;
             observations: string | null;
             personId: string | null;
             wasSettled: boolean | null;
-            personNames: string;
-            personSurNames: string;
-            createdAt: Date;
-            updatedAt: Date;
         };
     }>;
     create(createPhysicalBookOperationDto: CreatePhysicalBookOperationDto): string;

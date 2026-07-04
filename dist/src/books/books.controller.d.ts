@@ -3,7 +3,20 @@ export declare class BookController {
     private bookService;
     constructor(bookService: BookService);
     findAll(query: any): Promise<{
-        data: {
+        data: ({
+            pnfs: {
+                id: string;
+                createdAt: Date;
+                pnf: import(".prisma/client").$Enums.Pnf;
+                bookId: number;
+            }[];
+            authors: {
+                id: string;
+                name: string;
+                createdAt: Date;
+                updatedAt: Date;
+            }[];
+        } & {
             id: number;
             title: string;
             description: string | null;
@@ -11,12 +24,25 @@ export declare class BookController {
             routeimg: string | null;
             createAt: Date;
             updateAt: Date;
-        }[];
+        })[];
         totalPages: number;
     }>;
     getMyLibrary(req: any, query: any): Promise<{
         data: ({
             book: {
+                pnfs: {
+                    id: string;
+                    createdAt: Date;
+                    pnf: import(".prisma/client").$Enums.Pnf;
+                    bookId: number;
+                }[];
+                authors: {
+                    id: string;
+                    name: string;
+                    createdAt: Date;
+                    updatedAt: Date;
+                }[];
+            } & {
                 id: number;
                 title: string;
                 description: string | null;
@@ -30,12 +56,25 @@ export declare class BookController {
             userId: number;
             createdAt: Date;
             updatedAt: Date;
-            saveeAt: Date;
             bookId: number;
+            saveeAt: Date;
         })[];
         totalPages: number;
     }>;
     findOne(id: number): Promise<{
+        pnfs: {
+            id: string;
+            createdAt: Date;
+            pnf: import(".prisma/client").$Enums.Pnf;
+            bookId: number;
+        }[];
+        authors: {
+            id: string;
+            name: string;
+            createdAt: Date;
+            updatedAt: Date;
+        }[];
+    } & {
         id: number;
         title: string;
         description: string | null;
@@ -44,8 +83,23 @@ export declare class BookController {
         createAt: Date;
         updateAt: Date;
     }>;
-    create(data: any, req: any, file: Express.Multer.File): Promise<{
+    create(data: {
+        title: string;
+        routepdf: string;
+        pnfs?: string[];
+        authorIds?: string[];
+        [key: string]: any;
+    }, req: any): Promise<{
         message: string;
+        book: {
+            id: number;
+            title: string;
+            description: string | null;
+            routepdf: string;
+            routeimg: string | null;
+            createAt: Date;
+            updateAt: Date;
+        };
     }>;
     delete(id: number, req: any): Promise<{
         book: {
@@ -59,8 +113,27 @@ export declare class BookController {
         };
         message: string;
     }>;
-    edit(id: number, data: any, pdfFile: Express.Multer.File, req: any): Promise<{
+    update(id: number, data: {
+        title?: string;
+        routepdf?: string;
+        pnfs?: string[];
+        authorIds?: string[];
+        [key: string]: any;
+    }, req: any): Promise<{
         book: {
+            pnfs: {
+                id: string;
+                createdAt: Date;
+                pnf: import(".prisma/client").$Enums.Pnf;
+                bookId: number;
+            }[];
+            authors: {
+                id: string;
+                name: string;
+                createdAt: Date;
+                updatedAt: Date;
+            }[];
+        } & {
             id: number;
             title: string;
             description: string | null;
@@ -71,16 +144,16 @@ export declare class BookController {
         };
         message: string;
     }>;
-    verifyLike(req: any, bookId: any): Promise<boolean>;
-    removeLike(req: any, bookId: any): Promise<{
+    verifyLike(req: any, bookId: number): Promise<boolean>;
+    removeLike(req: any, bookId: number): Promise<{
         message: string;
         data: {
             id: number;
             userId: number;
             createdAt: Date;
             updatedAt: Date;
-            saveeAt: Date;
             bookId: number;
+            saveeAt: Date;
         }[];
     }>;
     save(req: any, bookId: number): Promise<{
@@ -90,8 +163,8 @@ export declare class BookController {
             userId: number;
             createdAt: Date;
             updatedAt: Date;
-            saveeAt: Date;
             bookId: number;
+            saveeAt: Date;
         };
     }>;
 }

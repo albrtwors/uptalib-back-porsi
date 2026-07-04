@@ -11,7 +11,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "postgres"
   url      = env("DATABASE_URL")
 }
 
@@ -20,14 +20,6 @@ datasource db {
 model Category {
   id            String         @id @default(cuid())
   name          String         @unique
-  physicalBooks PhysicalBook[]
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-}
-
-model Author {
-  id            String         @id @default(cuid())
-  name          String
   physicalBooks PhysicalBook[]
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
@@ -92,8 +84,10 @@ enum ItemStatus {
 }
 
 enum Pnf {
+  GENERAL
   INFORMATICA
   ELECTRONICA
+  MANTENIMIENTO
   CONTADURIA
   ADMINISTRACION
   ELECTRICIDAD
@@ -129,15 +123,45 @@ enum Role {
   ADMIN
 }
 
+// ... Tus modelos Category, Author y PhysicalBook quedan exactamente igual
+
+model Author {
+  id            String         @id @default(cuid())
+  name          String
+  physicalBooks PhysicalBook[]
+  books         Book[] // 👈 RELACIÓN NUEVA: Un autor puede tener muchos libros digitales
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+}
+
+// ... Modelos de operaciones, inventarios y usuarios quedan igual
+
 model Book {
-  id          Int         @id @default(autoincrement())
-  title       String
+  id    Int    @id @default(autoincrement())
+  title String
+
+  // 🚫 pnf Pnf @default(GENERAL) <- ESTO SE ELIMINA (Lo haremos abajo)
+  pnfs    BookPnf[] // 👈 RELACIÓN NUEVA: Muchos PNF por libro (Tabla intermedia explícita o enum compuesto)
+  authors Author[] // 👈 RELACIÓN NUEVA: Relación implícita muchos a muchos con el Author del físico
+
   description String?
   routepdf    String
   routeimg    String?
   createAt    DateTime    @default(now())
   updateAt    DateTime    @updatedAt
   savedby     SavedBook[]
+}
+
+// 💡 Tabla intermedia para Book y Pnf. 
+// Usamos un modelo explícito para que puedas asociar múltiples Enums de Pnf a un mismo libro de forma limpia.
+model BookPnf {
+  id        String   @id @default(cuid())
+  bookId    Int
+  pnf       Pnf
+  book      Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([bookId, pnf]) // Evita que se repita el mismo PNF en el mismo libro
 }
 
 model SavedBook {

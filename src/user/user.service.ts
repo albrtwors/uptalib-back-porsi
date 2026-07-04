@@ -121,4 +121,37 @@ export class UsersService {
     const { password, ...result } = user;
     return result;
   }
+  async updateMe(id: number, updateDto: { name?: string; email?: string; password?: string }) {
+    const user = await this.prisma.user.findUnique({ where: { id } });
+    if (!user) throw new NotFoundException('Usuario no encontrado');
+
+    const dataToUpdate: any = {};
+
+    if (updateDto.name) dataToUpdate.name = updateDto.name;
+
+    if (updateDto.email && updateDto.email !== user.email) {
+      // Validar que el nuevo correo no esté tomado
+      const emailExists = await this.prisma.user.findUnique({ where: { email: updateDto.email } });
+      if (emailExists) throw new ConflictException('El correo ya se encuentra registrado');
+      dataToUpdate.email = updateDto.email;
+    }
+
+    if (updateDto.password && updateDto.password.trim() !== "") {
+      const salt = await bcrypt.genSalt(10);
+      dataToUpdate.password = await bcrypt.hash(updateDto.password, salt);
+    }
+
+    const updatedUser = await this.prisma.user.update({
+      where: { id },
+      data: dataToUpdate,
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+      }
+    });
+
+    return { message: 'Perfil actualizado con éxito', user: updatedUser };
+  }
 } 

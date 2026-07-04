@@ -10,16 +10,16 @@ export declare class PhysicalBookOperationController {
         totalPages: number;
         data: {
             id: string;
+            createdAt: Date;
+            updatedAt: Date;
             bookId: string;
             type: import(".prisma/client").$Enums.OperationType;
             quantity: number;
+            personNames: string;
+            personSurNames: string;
             observations: string | null;
             personId: string | null;
             wasSettled: boolean | null;
-            personNames: string;
-            personSurNames: string;
-            createdAt: Date;
-            updatedAt: Date;
         }[];
     }>;
     addEntries(entriesDto: EntrieDto): Promise<{
@@ -35,16 +35,16 @@ export declare class PhysicalBookOperationController {
         message: string;
         loan: {
             id: string;
+            createdAt: Date;
+            updatedAt: Date;
             bookId: string;
             type: import(".prisma/client").$Enums.OperationType;
             quantity: number;
+            personNames: string;
+            personSurNames: string;
             observations: string | null;
             personId: string | null;
             wasSettled: boolean | null;
-            personNames: string;
-            personSurNames: string;
-            createdAt: Date;
-            updatedAt: Date;
         };
     }>;
     settle(id: any): Promise<{
@@ -54,16 +54,16 @@ export declare class PhysicalBookOperationController {
     findAllLoans(query: any): Promise<{
         data: {
             id: string;
+            createdAt: Date;
+            updatedAt: Date;
             bookId: string;
             type: import(".prisma/client").$Enums.OperationType;
             quantity: number;
+            personNames: string;
+            personSurNames: string;
             observations: string | null;
             personId: string | null;
             wasSettled: boolean | null;
-            personNames: string;
-            personSurNames: string;
-            createdAt: Date;
-            updatedAt: Date;
         }[];
         totalPages: number;
     }>;

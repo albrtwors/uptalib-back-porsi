@@ -22,7 +22,14 @@ export class UsersController {
     return this.usersService.create(createUserDto);
   }
 
-
+  @Patch('me')
+  @UseGuards(JwtAuthGuard)
+  updateMe(
+    @GetUser('userId') userId: number,
+    @Body() updateDto: { name?: string; email?: string; password?: string }
+  ) {
+    return this.usersService.updateMe(userId, updateDto);
+  }
   @Get('profile')
   @UseGuards(JwtAuthGuard)
   getProfile(@GetUser('userId') userId: number) {

@@ -11,9 +11,6 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 var __param = (this && this.__param) || function (paramIndex, decorator) {
     return function (target, key) { decorator(target, key, paramIndex); }
 };
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.BookController = void 0;
 const common_1 = require("@nestjs/common");
@@ -22,10 +19,6 @@ const jwt_auth_guard_1 = require("../auth/guards/jwt-auth.guard");
 const roles_guard_1 = require("../auth/guards/roles.guard");
 const roles_decorator_1 = require("../auth/decorators/roles.decorator");
 const client_1 = require("@prisma/client");
-const platform_express_1 = require("@nestjs/platform-express");
-const multer_1 = require("multer");
-const path_1 = __importDefault(require("path"));
-const uploadFile_1 = require("../utils/uploadFile");
 const deleteFile_1 = require("../utils/deleteFile");
 let BookController = class BookController {
     constructor(bookService) {
@@ -40,53 +33,34 @@ let BookController = class BookController {
     findOne(id) {
         return this.bookService.findOne(id);
     }
-    async create(data, req, file) {
-        if (!file) {
-            throw new Error('No se ha subido ningún archivo');
+    async create(data, req) {
+        if (!data.routepdf) {
+            throw new common_1.NotFoundException('La ruta o enlace del PDF es requerida');
         }
-        const sanitizedTitle = data.title
-            .toLowerCase()
-            .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-            .replace(/[^a-z0-9]/g, '_')
-            .replace(/_+/g, '_');
-        const fileExt = path_1.default.extname(file.originalname) || '.pdf';
-        const newFileName = `${sanitizedTitle}${fileExt}`;
-        const finalPath = await (0, uploadFile_1.uploadFile)(file, 'pdfs', newFileName);
-        console.log(finalPath);
-        return this.bookService.create({ ...data, routepdf: finalPath }, req);
+        console.log('Registrando libro multi-autor y multi-pnf en la BD:', data.title);
+        return this.bookService.create(data, req);
     }
     async delete(id, req) {
         const book = await this.bookService.findOne(id);
         if (!book) {
             throw new common_1.NotFoundException('El libro no existe');
         }
-        if (book && book.routepdf) {
-            const bucketName = 'pdfs';
+        const bucketName = 'pdfs';
+        if (book.routepdf && book.routepdf.includes(`${bucketName}/`)) {
             const supabasePath = book.routepdf.split(`${bucketName}/`)[1];
             if (supabasePath) {
-                await (0, deleteFile_1.deleteFile)(supabasePath, 'pdfs');
+                try {
+                    await (0, deleteFile_1.deleteFile)(supabasePath, 'pdfs');
+                }
+                catch (error) {
+                    console.error('No se pudo borrar el archivo en Supabase:', error);
+                }
             }
         }
         return this.bookService.delete(id, req);
     }
-    async edit(id, data, pdfFile, req) {
-        const existingBook = await this.bookService.findOne(id);
-        if (!existingBook) {
-            throw new common_1.NotFoundException('El libro no existe');
-        }
-        let updateData = data;
-        if (pdfFile) {
-            const sanitizedTitle = existingBook.title != data.title ? data.title : existingBook.title
-                .toLowerCase()
-                .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-                .replace(/[^a-z0-9]/g, '_')
-                .replace(/_+/g, '_');
-            const fileExt = path_1.default.extname(pdfFile.originalname) || '.pdf';
-            const newFileName = `${sanitizedTitle}${fileExt}`;
-            const finalPath = await (0, uploadFile_1.uploadFile)(pdfFile, 'pdfs', newFileName);
-            updateData = { ...data, routepdf: finalPath };
-        }
-        return this.bookService.edit(id, updateData, req);
+    async update(id, data, req) {
+        return this.bookService.edit(id, data, req);
     }
     verifyLike(req, bookId) {
         return this.bookService.getVerifyLike(req.user.userId, bookId);
@@ -101,7 +75,6 @@ let BookController = class BookController {
 exports.BookController = BookController;
 __decorate([
     (0, common_1.Get)(),
-    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
     __param(0, (0, common_1.Query)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Object]),
@@ -118,7 +91,6 @@ __decorate([
 ], BookController.prototype, "getMyLibrary", null);
 __decorate([
     (0, common_1.Get)(':id'),
-    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
     __param(0, (0, common_1.Param)('id', common_1.ParseIntPipe)),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Number]),
@@ -128,12 +100,10 @@ __decorate([
     (0, common_1.Post)(),
     (0, roles_decorator_1.Roles)(client_1.Role.LIBRARIAN, client_1.Role.ADMIN),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
-    (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)('pdf', { storage: (0, multer_1.memoryStorage)() })),
     __param(0, (0, common_1.Body)()),
     __param(1, (0, common_1.Req)()),
-    __param(2, (0, common_1.UploadedFile)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object, Object, Object]),
+    __metadata("design:paramtypes", [Object, Object]),
     __metadata("design:returntype", Promise)
 ], BookController.prototype, "create", null);
 __decorate([
@@ -150,22 +120,20 @@ __decorate([
     (0, common_1.Patch)(':id'),
     (0, roles_decorator_1.Roles)(client_1.Role.LIBRARIAN, client_1.Role.ADMIN),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
-    (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)('pdf', { storage: (0, multer_1.memoryStorage)() })),
     __param(0, (0, common_1.Param)('id', common_1.ParseIntPipe)),
     __param(1, (0, common_1.Body)()),
-    __param(2, (0, common_1.UploadedFile)()),
-    __param(3, (0, common_1.Req)()),
+    __param(2, (0, common_1.Req)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Number, Object, Object, Object]),
+    __metadata("design:paramtypes", [Number, Object, Object]),
     __metadata("design:returntype", Promise)
-], BookController.prototype, "edit", null);
+], BookController.prototype, "update", null);
 __decorate([
     (0, common_1.Get)('verify-like/:bookId'),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
     __param(0, (0, common_1.Req)()),
     __param(1, (0, common_1.Param)('bookId', common_1.ParseIntPipe)),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object, Object]),
+    __metadata("design:paramtypes", [Object, Number]),
     __metadata("design:returntype", void 0)
 ], BookController.prototype, "verifyLike", null);
 __decorate([
@@ -174,7 +142,7 @@ __decorate([
     __param(0, (0, common_1.Req)()),
     __param(1, (0, common_1.Param)('bookId', common_1.ParseIntPipe)),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object, Object]),
+    __metadata("design:paramtypes", [Object, Number]),
     __metadata("design:returntype", void 0)
 ], BookController.prototype, "removeLike", null);
 __decorate([

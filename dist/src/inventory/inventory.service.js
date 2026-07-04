@@ -22,7 +22,33 @@ let InventoryService = class InventoryService {
         this.prisma = prisma;
     }
     async create(createInventoryDto) {
-        return { item: await this.prisma.item.create({ data: { typeId: createInventoryDto.typeId, name: createInventoryDto.name, description: createInventoryDto.description, code: createInventoryDto.code, availableStock: createInventoryDto.stock, totalStock: createInventoryDto.stock, status: 'DISPONIBLE' } }), message: 'Item añadido' };
+        return this.prisma.$transaction(async (tx) => {
+            const { typeId, typeName, stock, ...restOfDto } = createInventoryDto;
+            let resolvedTypeId = typeId;
+            if (!resolvedTypeId && typeName && typeName.trim() !== '') {
+                const cleanedTypeName = typeName.trim();
+                let itemType = await tx.itemType.findFirst({
+                    where: { name: { equals: cleanedTypeName, mode: 'insensitive' } }
+                });
+                if (!itemType) {
+                    itemType = await tx.itemType.create({
+                        data: { name: cleanedTypeName }
+                    });
+                }
+                resolvedTypeId = itemType.id;
+            }
+            const parsedStock = parseInt(stock) || 0;
+            const item = await tx.item.create({
+                data: {
+                    ...restOfDto,
+                    typeId: resolvedTypeId || undefined,
+                    availableStock: parsedStock,
+                    totalStock: parsedStock,
+                    status: 'DISPONIBLE'
+                }
+            });
+            return { item, message: 'Item añadido exitosamente' };
+        });
     }
     async findAll(query) {
         const search = query.search;
@@ -31,37 +57,80 @@ let InventoryService = class InventoryService {
         if (search) {
             where.AND = [
                 {
-                    name: { contains: search },
+                    name: { contains: search, mode: 'insensitive' },
                 },
             ];
         }
         if (query.type) {
+            const typeFilter = {
+                type: {
+                    name: { contains: query.type, mode: 'insensitive' }
+                }
+            };
             if (!where.AND)
-                where.AND = [{ type: { name: { contains: query.type } } }];
+                where.AND = [typeFilter];
             else
-                where.AND.push({ type: { name: { contains: query.type } } });
+                where.AND.push(typeFilter);
         }
         const totalPages = Math.ceil(await this.prisma.item.count({ where }) / take);
         const data = await this.prisma.item.findMany({
-            where, skip, take, include: {
+            where,
+            skip,
+            take,
+            include: {
                 type: true
             }
         });
         return { data, totalPages };
     }
     findOne(id) {
-        return `This action returns a #${id} inventorsyss`;
+        return `This action returns a #${id} inventory item`;
     }
     async edit(id, updateInventoryDto) {
-        const existingItem = await this.prisma.item.findUnique({ where: { id }, include: { itemOperations: true } });
-        const newValue = (0, getDifference_1.default)({ oldAvailableStockValue: existingItem.availableStock, oldCurrentStockValue: existingItem.totalStock, newStockValue: updateInventoryDto.stock });
-        if (newValue < 0)
-            return { status: 'error', message: "Hay préstamos pendientes que impiden que coloques un stock alto" };
-        return { item: await this.prisma.item.update({ where: { id }, data: { typeId: updateInventoryDto.typeId, name: updateInventoryDto.name, description: updateInventoryDto.description, code: updateInventoryDto.code, availableStock: updateInventoryDto.stock, totalStock: newValue, status: 'DISPONIBLE' } }), message: 'Item actualizado' };
+        return this.prisma.$transaction(async (tx) => {
+            const existingItem = await tx.item.findUnique({ where: { id } });
+            if (!existingItem)
+                throw new common_1.HttpException('Item no encontrado', common_1.HttpStatus.NOT_FOUND);
+            const { typeId, typeName, stock, ...restOfDto } = updateInventoryDto;
+            let resolvedTypeId = typeId;
+            if (!resolvedTypeId && typeName && typeName.trim() !== '') {
+                const cleanedTypeName = typeName.trim();
+                let itemType = await tx.itemType.findFirst({
+                    where: { name: { equals: cleanedTypeName, mode: 'insensitive' } }
+                });
+                if (!itemType) {
+                    itemType = await tx.itemType.create({
+                        data: { name: cleanedTypeName }
+                    });
+                }
+                resolvedTypeId = itemType.id;
+            }
+            const parsedStock = parseInt(stock) || existingItem.totalStock;
+            const newValue = (0, getDifference_1.default)({
+                oldAvailableStockValue: existingItem.availableStock,
+                oldCurrentStockValue: existingItem.totalStock,
+                newStockValue: parsedStock
+            });
+            if (newValue < 0) {
+                throw new common_1.HttpException("Hay préstamos pendientes que impiden que reduzcas tanto el stock", common_1.HttpStatus.BAD_REQUEST);
+            }
+            const item = await tx.item.update({
+                where: { id },
+                data: {
+                    ...restOfDto,
+                    typeId: resolvedTypeId || undefined,
+                    availableStock: parsedStock,
+                    totalStock: newValue,
+                    status: 'DISPONIBLE'
+                }
+            });
+            return { item, message: 'Item actualizado con éxito' };
+        });
     }
     async delete(id) {
         await this.prisma.itemOperation.deleteMany({ where: { itemId: id } });
-        return { item: await this.prisma.item.delete({ where: { id } }), message: 'Item Eliminado' };
+        const item = await this.prisma.item.delete({ where: { id } });
+        return { item, message: 'Item Eliminado correctamente' };
     }
 };
 exports.InventoryService = InventoryService;

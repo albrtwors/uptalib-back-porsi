@@ -18,6 +18,9 @@ import { SupabaseService } from './supabase/supabase.service';
 import { SupabaseModule } from './supabase/supabase.module';
 import { FilesService } from './files/files.service';
 import { BackupModule } from './backup/backup.module';
+import { AiBooksModule } from './ai-books/ai-books.module';
+import { AiInventoryModule } from './ai-inventory/ai-inventory.module';
+import { AiPhysicalBookModule } from './ai-physical-book/ai-physical-book.module';
 @Module({
   imports: [
     ServeStaticModule.forRoot({
@@ -41,6 +44,9 @@ import { BackupModule } from './backup/backup.module';
     InventoryOperationModule,
     LogsModule,
     BackupModule,
+    AiBooksModule,
+    AiInventoryModule,
+    AiPhysicalBookModule,
 
   ],
   providers: [],

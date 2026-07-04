@@ -6,154 +6,177 @@ import { PrismaService } from 'prisma/prisma.service';
 @Injectable()
 export class PhysicalBooksService {
   constructor(private prisma: PrismaService) { }
-  async create(createPhysicalBookDto: CreatePhysicalBookDto) {
-    return this.prisma.$transaction(async (tx) => {
 
+  async create(createPhysicalBookDto: any) {
+    return this.prisma.$transaction(async (tx) => {
+      const { authorId, categoryId, authorName, categoryName, ...restOfDto } = createPhysicalBookDto;
+
+      let resolvedAuthorId = authorId;
+      let resolvedCategoryId = categoryId;
+
+      // 👤 Resolución manual de Autor
+      if (!resolvedAuthorId && authorName && authorName.trim() !== '') {
+        const cleanedName = authorName.trim();
+        let author = await tx.author.findFirst({
+          where: { name: { equals: cleanedName, mode: 'insensitive' } }
+        });
+
+        if (!author) {
+          author = await tx.author.create({
+            data: { name: cleanedName }
+          });
+        }
+        resolvedAuthorId = author.id;
+      }
+
+      // 📂 Resolución manual de Categoría / Género
+      if (!resolvedCategoryId && categoryName && categoryName.trim() !== '') {
+        const cleanedCategory = categoryName.trim();
+        let category = await tx.category.findFirst({
+          where: { name: { equals: cleanedCategory, mode: 'insensitive' } }
+        });
+
+        if (!category) {
+          category = await tx.category.create({
+            data: { name: cleanedCategory }
+          });
+        }
+        resolvedCategoryId = category.id;
+      }
+
+      // Guardar el libro físico usando las IDs resueltas directamente
       const physicalBook = await tx.physicalBook.create({
-        data: { ...createPhysicalBookDto, availableStock: createPhysicalBookDto.totalStock }
-      })
+        data: {
+          ...restOfDto,
+          yearOfPublication: parseInt(restOfDto.yearOfPublication) || undefined,
+          totalStock: parseInt(restOfDto.totalStock) || 0,
+          availableStock: parseInt(restOfDto.totalStock) || 0,
+          authorId: resolvedAuthorId || undefined,
+          categoryId: resolvedCategoryId || undefined
+        }
+      });
 
       return {
         status: 'success',
-        message: 'Libro físico creados exitosamente',
+        message: 'Libro físico creado exitosamente',
         data: { ...physicalBook }
       };
     });
   }
 
-  async findAll(query: any) {
-
-    const take = parseInt(query.limit) || 10;
-    const page = parseInt(query.page) || 1
-    const skip = (page - 1) * take
-
-    const search = query.search
-    const where: any = {}
-
-    query.pnf = query.pnf == 'undefined' || query.pnf == '' ? 'todos' : query.pnf
-    query.genre = query.genre == 'undefined' ? '' : query.genre
-
-    if (search) {
-      where.AND = [
-        {
-          title: { contains: search },
-        },
-
-      ]
-    }
-
-    if (query.genre) {
-      if (where.AND) {
-        where.AND.push({
-          category: {
-            name: { contains: query.genre || '' }
-          }
-        })
-      } else {
-        where.AND = [
-          {
-            category: { name: query.genre || '' },
-          },
-
-        ]
-      }
-
-    }
-
-
-
-    if (query.pnf != 'todos') {
-
-
-      if (where.AND) {
-        where.AND.push({
-          pnf: query.pnf
-        })
-      } else if (!where.AND) {
-        where.AND = [
-          { pnf: query.pnf }
-        ]
-      }
-    }
-
-
-
-
-    const totalPages = await this.prisma.physicalBook.count({ where })
-    const data = await this.prisma.physicalBook.findMany({
-      where, take, skip, include: {
-        author: {
-          select: {
-            id: true,
-            name: true
-          }
-        },
-        category: {
-          select: {
-            id: true,
-            name: true
-          }
-        }
-      },
-    })
-    return { data, totalPages }
-  }
-
-  findOne(id: number) {
-    return `This action returns a #${id} physicalBook`;
-  }
-
-  async update(id: string, updatePhysicalBookDto: UpdatePhysicalBookDto) {
+  async update(id: string, updatePhysicalBookDto: any) {
     return await this.prisma.$transaction(async (tx) => {
-      // 1. Obtener el PhysicalBook actual para calcular la diferencia
-      const currentBook = await tx.physicalBook.findUnique({
-        where: { id }
-      });
+      const currentBook = await tx.physicalBook.findUnique({ where: { id } });
+      if (!currentBook) throw new HttpException('Libro físico no encontrado', HttpStatus.NOT_FOUND);
 
-      if (!currentBook) {
-        throw new Error('Libro físico no encontrado');
+      const { authorId, categoryId, authorName, categoryName, ...restOfDto } = updatePhysicalBookDto;
+
+      let resolvedAuthorId = authorId;
+      let resolvedCategoryId = categoryId;
+
+      // 👤 Resolución manual de Autor en actualización
+      if (!resolvedAuthorId && authorName && authorName.trim() !== '') {
+        const cleanedName = authorName.trim();
+        let author = await tx.author.findFirst({
+          where: { name: { equals: cleanedName, mode: 'insensitive' } }
+        });
+
+        if (!author) {
+          author = await tx.author.create({
+            data: { name: cleanedName }
+          });
+        }
+        resolvedAuthorId = author.id;
       }
 
-      // 2. Calcular la diferencia actual (prestados, dañados, etc.)
+      // 📂 Resolución manual de Categoría en actualización
+      if (!resolvedCategoryId && categoryName && categoryName.trim() !== '') {
+        const cleanedCategory = categoryName.trim();
+        let category = await tx.category.findFirst({
+          where: { name: { equals: cleanedCategory, mode: 'insensitive' } }
+        });
+
+        if (!category) {
+          category = await tx.category.create({
+            data: { name: cleanedCategory }
+          });
+        }
+        resolvedCategoryId = category.id;
+      }
+
       const currentDifference = currentBook.totalStock - currentBook.availableStock;
+      const parsedTotalStock = parseInt(restOfDto.totalStock) || currentBook.totalStock;
+      const newAvailableStock = parsedTotalStock - currentDifference;
 
-      // 3. Calcular el nuevo availableStock manteniendo la diferencia
-      const newAvailableStock = updatePhysicalBookDto.totalStock - currentDifference;
       if (newAvailableStock < 0) {
-        throw new HttpException('Cantidad incorrecta, resuelve los prestamos del libro primero', HttpStatus.BAD_REQUEST)
+        throw new HttpException('Cantidad incorrecta, resuelve los préstamos del libro primero', HttpStatus.BAD_REQUEST);
       }
 
-      // 4. Actualizar con los valores calculados
       const physicalBook = await tx.physicalBook.update({
         where: { id },
         data: {
-          ...updatePhysicalBookDto,
-          availableStock: newAvailableStock // ✅ Automático
+          ...restOfDto,
+          yearOfPublication: parseInt(restOfDto.yearOfPublication) || undefined,
+          totalStock: parsedTotalStock,
+          availableStock: newAvailableStock,
+          authorId: resolvedAuthorId || undefined,
+          categoryId: resolvedCategoryId || undefined
         }
       });
 
       return {
         status: 'success',
         message: 'Libro físico actualizado exitosamente',
-        data: {
-          ...physicalBook,
-          difference: currentDifference // Para debugging
-        }
+        data: { ...physicalBook }
       };
     });
   }
 
-  async remove(id: string) {
+  async findAll(query: any) {
+    const take = parseInt(query.limit) || 10;
+    const page = parseInt(query.page) || 1;
+    const skip = (page - 1) * take;
+    const search = query.search;
+    const where: any = {};
 
-    await this.prisma.bookOperation.deleteMany({
-      where: {
-        bookId: id
-      }
+    query.pnf = query.pnf == 'undefined' || query.pnf == '' ? 'todos' : query.pnf;
+    query.genre = query.genre == 'undefined' ? '' : query.genre;
+
+    if (search) {
+      where.AND = [{ title: { contains: search, mode: 'insensitive' } }];
+    }
+
+    // 💡 Aquí aplicamos mode: 'insensitive' al filtro por relación de categoría
+    if (query.genre) {
+      const genreFilter = {
+        category: {
+          name: {
+            contains: query.genre,
+            mode: 'insensitive' // 👈 Evita problemas si viene en mayúsculas o minúsculas
+          }
+        }
+      };
+      where.AND ? where.AND.push(genreFilter) : where.AND = [genreFilter];
+    }
+
+    if (query.pnf != 'todos') {
+      const pnfFilter = { pnf: query.pnf };
+      where.AND ? where.AND.push(pnfFilter) : where.AND = [pnfFilter];
+    }
+
+    const totalPages = await this.prisma.physicalBook.count({ where });
+    const data = await this.prisma.physicalBook.findMany({
+      where, take, skip, include: {
+        author: { select: { id: true, name: true } },
+        category: { select: { id: true, name: true } }
+      },
     });
+    return { data, totalPages };
+  }
 
-    const removedBook = await this.prisma.physicalBook.delete({
-      where: { id }
-    })
-    return { status: 'success', message: 'Libro fisico eliminado' };
+  async remove(id: string) {
+    await this.prisma.bookOperation.deleteMany({ where: { bookId: id } });
+    await this.prisma.physicalBook.delete({ where: { id } });
+    return { status: 'success', message: 'Libro físico eliminado' };
   }
 }

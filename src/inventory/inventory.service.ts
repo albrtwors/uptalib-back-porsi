@@ -1,74 +1,148 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
-
+import { BadRequestException, Injectable, HttpException, HttpStatus } from '@nestjs/common';
 import { PrismaService } from 'prisma/prisma.service';
-import { CreateItemInventory } from './dto/create-item-dto';
-import { EditItemInventory } from './dto/edit-item-dto';
 import { getPagination } from '../functions/pagination/getPagination';
-
-import { CreateInventoryDto } from './dto/create-inventory.dto';
-import { UpdateInventory } from './dto/update-inventory.dto';
 import getStockDifference from '../utils/getDifference';
-
 
 @Injectable()
 export class InventoryService {
   constructor(private prisma: PrismaService) { }
-  async create(createInventoryDto: CreateInventoryDto) {
 
-    return { item: await this.prisma.item.create({ data: { typeId: createInventoryDto.typeId, name: createInventoryDto.name, description: createInventoryDto.description, code: createInventoryDto.code, availableStock: createInventoryDto.stock, totalStock: createInventoryDto.stock, status: 'DISPONIBLE' } }), message: 'Item añadido' };
+  async create(createInventoryDto: any) {
+    return this.prisma.$transaction(async (tx) => {
+      const { typeId, typeName, stock, ...restOfDto } = createInventoryDto;
+
+      let resolvedTypeId = typeId;
+
+      // 🛠️ Enfoque 2: Buscar primero o crear el Tipo de Item manualmente
+      if (!resolvedTypeId && typeName && typeName.trim() !== '') {
+        const cleanedTypeName = typeName.trim();
+        let itemType = await tx.itemType.findFirst({
+          where: { name: { equals: cleanedTypeName, mode: 'insensitive' } }
+        });
+
+        if (!itemType) {
+          itemType = await tx.itemType.create({
+            data: { name: cleanedTypeName }
+          });
+        }
+        resolvedTypeId = itemType.id;
+      }
+
+      const parsedStock = parseInt(stock) || 0;
+
+      const item = await tx.item.create({
+        data: {
+          ...restOfDto,
+          typeId: resolvedTypeId || undefined,
+          availableStock: parsedStock,
+          totalStock: parsedStock,
+          status: 'DISPONIBLE'
+        }
+      });
+
+      return { item, message: 'Item añadido exitosamente' };
+    });
   }
 
   async findAll(query: any) {
+    const search = query.search;
+    const where: any = {};
 
-    const search = query.search
-    const where: any = {}
+    // Pagination utility
+    const { take, page, skip } = getPagination(query);
 
-    //pagination stuff
-    const { take, page, skip } = getPagination(query)
-
-
+    // Búsqueda por coincidencia de nombre (Case-Insensitive)
     if (search) {
       where.AND = [
         {
-          name: { contains: search },
+          name: { contains: search, mode: 'insensitive' },
         },
-
-      ]
+      ];
     }
 
+    // 💡 Ajustado el filtro de tipos de item para que sea Case Insensitive también
     if (query.type) {
-      if (!where.AND) where.AND = [{ type: { name: { contains: query.type } } }]
-      else where.AND.push({ type: { name: { contains: query.type } } })
+      const typeFilter = {
+        type: {
+          name: { contains: query.type, mode: 'insensitive' }
+        }
+      };
+      if (!where.AND) where.AND = [typeFilter];
+      else where.AND.push(typeFilter);
     }
 
-    const totalPages = Math.ceil(await this.prisma.item.count({ where }) / take)
+    const totalPages = Math.ceil(await this.prisma.item.count({ where }) / take);
     const data = await this.prisma.item.findMany({
-      where, skip, take, include: {
+      where,
+      skip,
+      take,
+      include: {
         type: true
       }
-    })
-    return { data, totalPages }
+    });
+
+    return { data, totalPages };
   }
 
   findOne(id: string) {
-    return `This action returns a #${id} inventorsyss`;
+    return `This action returns a #${id} inventory item`;
   }
 
-  async edit(id: string, updateInventoryDto: UpdateInventory) {
-    const existingItem = await this.prisma.item.findUnique({ where: { id }, include: { itemOperations: true } })
+  async edit(id: string, updateInventoryDto: any) {
+    return this.prisma.$transaction(async (tx) => {
+      const existingItem = await tx.item.findUnique({ where: { id } });
+      if (!existingItem) throw new HttpException('Item no encontrado', HttpStatus.NOT_FOUND);
 
-    const newValue = getStockDifference({ oldAvailableStockValue: existingItem.availableStock, oldCurrentStockValue: existingItem.totalStock, newStockValue: updateInventoryDto.stock })
+      const { typeId, typeName, stock, ...restOfDto } = updateInventoryDto;
 
-    if (newValue < 0) return { status: 'error', message: "Hay préstamos pendientes que impiden que coloques un stock alto" }
+      let resolvedTypeId = typeId;
 
+      // 🛠️ Enfoque 2: Resolución de tipo en la edición
+      if (!resolvedTypeId && typeName && typeName.trim() !== '') {
+        const cleanedTypeName = typeName.trim();
+        let itemType = await tx.itemType.findFirst({
+          where: { name: { equals: cleanedTypeName, mode: 'insensitive' } }
+        });
 
-    return { item: await this.prisma.item.update({ where: { id }, data: { typeId: updateInventoryDto.typeId, name: updateInventoryDto.name, description: updateInventoryDto.description, code: updateInventoryDto.code, availableStock: updateInventoryDto.stock, totalStock: newValue, status: 'DISPONIBLE' } }), message: 'Item actualizado' };
+        if (!itemType) {
+          itemType = await tx.itemType.create({
+            data: { name: cleanedTypeName }
+          });
+        }
+        resolvedTypeId = itemType.id;
+      }
+
+      const parsedStock = parseInt(stock) || existingItem.totalStock;
+
+      const newValue = getStockDifference({
+        oldAvailableStockValue: existingItem.availableStock,
+        oldCurrentStockValue: existingItem.totalStock,
+        newStockValue: parsedStock
+      });
+
+      if (newValue < 0) {
+        throw new HttpException("Hay préstamos pendientes que impiden que reduzcas tanto el stock", HttpStatus.BAD_REQUEST);
+      }
+
+      const item = await tx.item.update({
+        where: { id },
+        data: {
+          ...restOfDto,
+          typeId: resolvedTypeId || undefined,
+          availableStock: parsedStock,
+          totalStock: newValue,
+          status: 'DISPONIBLE'
+        }
+      });
+
+      return { item, message: 'Item actualizado con éxito' };
+    });
   }
 
   async delete(id: string) {
-
-    await this.prisma.itemOperation.deleteMany({ where: { itemId: id } })
-
-    return { item: await this.prisma.item.delete({ where: { id } }), message: 'Item Eliminado' }
+    // Eliminación de cascada manual en transacciones controladas
+    await this.prisma.itemOperation.deleteMany({ where: { itemId: id } });
+    const item = await this.prisma.item.delete({ where: { id } });
+    return { item, message: 'Item Eliminado correctamente' };
   }
 }

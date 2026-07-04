@@ -29,7 +29,7 @@ export class PhysicalBooksController {
   @Roles(Role.LIBRARIAN, Role.ADMIN)
   @UseGuards(JwtAuthGuard, RolesGuard)
   findOne(@Param('id') id: string) {
-    return this.physicalBooksService.findOne(+id);
+    return 'this.physicalBooksService.findOne(+id);'
   }
 
   @Patch(':id')

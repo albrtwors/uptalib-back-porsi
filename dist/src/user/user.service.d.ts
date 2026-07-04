@@ -58,16 +58,29 @@ export declare class UsersService {
             };
         } & {
             id: number;
+            saveeAt: Date;
+            bookId: number;
             userId: number;
             createdAt: Date;
             updatedAt: Date;
-            saveeAt: Date;
-            bookId: number;
         })[];
         id: number;
         email: string;
         name: string;
         isBlocked: boolean;
         role: import(".prisma/client").$Enums.Role;
+    }>;
+    updateMe(id: number, updateDto: {
+        name?: string;
+        email?: string;
+        password?: string;
+    }): Promise<{
+        message: string;
+        user: {
+            id: number;
+            email: string;
+            name: string;
+            role: import(".prisma/client").$Enums.Role;
+        };
     }>;
 }

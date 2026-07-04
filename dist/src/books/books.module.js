@@ -11,6 +11,7 @@ const common_1 = require("@nestjs/common");
 const books_service_1 = require("./books.service");
 const books_controller_1 = require("./books.controller");
 const prisma_module_1 = require("../../prisma/prisma.module");
+const bulk_books_service_1 = require("./bulk-books/bulk-books.service");
 let BooksModule = class BooksModule {
 };
 exports.BooksModule = BooksModule;
@@ -18,7 +19,8 @@ exports.BooksModule = BooksModule = __decorate([
     (0, common_1.Module)({
         imports: [prisma_module_1.PrismaModule],
         controllers: [books_controller_1.BookController],
-        providers: [books_service_1.BookService],
+        exports: [books_service_1.BookService, bulk_books_service_1.BulkBooksService],
+        providers: [books_service_1.BookService, bulk_books_service_1.BulkBooksService],
     })
 ], BooksModule);
 //# sourceMappingURL=books.module.js.map

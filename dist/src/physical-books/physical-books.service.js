@@ -18,12 +18,102 @@ let PhysicalBooksService = class PhysicalBooksService {
     }
     async create(createPhysicalBookDto) {
         return this.prisma.$transaction(async (tx) => {
+            const { authorId, categoryId, authorName, categoryName, ...restOfDto } = createPhysicalBookDto;
+            let resolvedAuthorId = authorId;
+            let resolvedCategoryId = categoryId;
+            if (!resolvedAuthorId && authorName && authorName.trim() !== '') {
+                const cleanedName = authorName.trim();
+                let author = await tx.author.findFirst({
+                    where: { name: { equals: cleanedName, mode: 'insensitive' } }
+                });
+                if (!author) {
+                    author = await tx.author.create({
+                        data: { name: cleanedName }
+                    });
+                }
+                resolvedAuthorId = author.id;
+            }
+            if (!resolvedCategoryId && categoryName && categoryName.trim() !== '') {
+                const cleanedCategory = categoryName.trim();
+                let category = await tx.category.findFirst({
+                    where: { name: { equals: cleanedCategory, mode: 'insensitive' } }
+                });
+                if (!category) {
+                    category = await tx.category.create({
+                        data: { name: cleanedCategory }
+                    });
+                }
+                resolvedCategoryId = category.id;
+            }
             const physicalBook = await tx.physicalBook.create({
-                data: { ...createPhysicalBookDto, availableStock: createPhysicalBookDto.totalStock }
+                data: {
+                    ...restOfDto,
+                    yearOfPublication: parseInt(restOfDto.yearOfPublication) || undefined,
+                    totalStock: parseInt(restOfDto.totalStock) || 0,
+                    availableStock: parseInt(restOfDto.totalStock) || 0,
+                    authorId: resolvedAuthorId || undefined,
+                    categoryId: resolvedCategoryId || undefined
+                }
             });
             return {
                 status: 'success',
-                message: 'Libro físico creados exitosamente',
+                message: 'Libro físico creado exitosamente',
+                data: { ...physicalBook }
+            };
+        });
+    }
+    async update(id, updatePhysicalBookDto) {
+        return await this.prisma.$transaction(async (tx) => {
+            const currentBook = await tx.physicalBook.findUnique({ where: { id } });
+            if (!currentBook)
+                throw new common_1.HttpException('Libro físico no encontrado', common_1.HttpStatus.NOT_FOUND);
+            const { authorId, categoryId, authorName, categoryName, ...restOfDto } = updatePhysicalBookDto;
+            let resolvedAuthorId = authorId;
+            let resolvedCategoryId = categoryId;
+            if (!resolvedAuthorId && authorName && authorName.trim() !== '') {
+                const cleanedName = authorName.trim();
+                let author = await tx.author.findFirst({
+                    where: { name: { equals: cleanedName, mode: 'insensitive' } }
+                });
+                if (!author) {
+                    author = await tx.author.create({
+                        data: { name: cleanedName }
+                    });
+                }
+                resolvedAuthorId = author.id;
+            }
+            if (!resolvedCategoryId && categoryName && categoryName.trim() !== '') {
+                const cleanedCategory = categoryName.trim();
+                let category = await tx.category.findFirst({
+                    where: { name: { equals: cleanedCategory, mode: 'insensitive' } }
+                });
+                if (!category) {
+                    category = await tx.category.create({
+                        data: { name: cleanedCategory }
+                    });
+                }
+                resolvedCategoryId = category.id;
+            }
+            const currentDifference = currentBook.totalStock - currentBook.availableStock;
+            const parsedTotalStock = parseInt(restOfDto.totalStock) || currentBook.totalStock;
+            const newAvailableStock = parsedTotalStock - currentDifference;
+            if (newAvailableStock < 0) {
+                throw new common_1.HttpException('Cantidad incorrecta, resuelve los préstamos del libro primero', common_1.HttpStatus.BAD_REQUEST);
+            }
+            const physicalBook = await tx.physicalBook.update({
+                where: { id },
+                data: {
+                    ...restOfDto,
+                    yearOfPublication: parseInt(restOfDto.yearOfPublication) || undefined,
+                    totalStock: parsedTotalStock,
+                    availableStock: newAvailableStock,
+                    authorId: resolvedAuthorId || undefined,
+                    categoryId: resolvedCategoryId || undefined
+                }
+            });
+            return {
+                status: 'success',
+                message: 'Libro físico actualizado exitosamente',
                 data: { ...physicalBook }
             };
         });
@@ -37,102 +127,36 @@ let PhysicalBooksService = class PhysicalBooksService {
         query.pnf = query.pnf == 'undefined' || query.pnf == '' ? 'todos' : query.pnf;
         query.genre = query.genre == 'undefined' ? '' : query.genre;
         if (search) {
-            where.AND = [
-                {
-                    title: { contains: search },
-                },
-            ];
+            where.AND = [{ title: { contains: search, mode: 'insensitive' } }];
         }
         if (query.genre) {
-            if (where.AND) {
-                where.AND.push({
-                    category: {
-                        name: { contains: query.genre || '' }
+            const genreFilter = {
+                category: {
+                    name: {
+                        contains: query.genre,
+                        mode: 'insensitive'
                     }
-                });
-            }
-            else {
-                where.AND = [
-                    {
-                        category: { name: query.genre || '' },
-                    },
-                ];
-            }
+                }
+            };
+            where.AND ? where.AND.push(genreFilter) : where.AND = [genreFilter];
         }
         if (query.pnf != 'todos') {
-            if (where.AND) {
-                where.AND.push({
-                    pnf: query.pnf
-                });
-            }
-            else if (!where.AND) {
-                where.AND = [
-                    { pnf: query.pnf }
-                ];
-            }
+            const pnfFilter = { pnf: query.pnf };
+            where.AND ? where.AND.push(pnfFilter) : where.AND = [pnfFilter];
         }
         const totalPages = await this.prisma.physicalBook.count({ where });
         const data = await this.prisma.physicalBook.findMany({
             where, take, skip, include: {
-                author: {
-                    select: {
-                        id: true,
-                        name: true
-                    }
-                },
-                category: {
-                    select: {
-                        id: true,
-                        name: true
-                    }
-                }
+                author: { select: { id: true, name: true } },
+                category: { select: { id: true, name: true } }
             },
         });
         return { data, totalPages };
     }
-    findOne(id) {
-        return `This action returns a #${id} physicalBook`;
-    }
-    async update(id, updatePhysicalBookDto) {
-        return await this.prisma.$transaction(async (tx) => {
-            const currentBook = await tx.physicalBook.findUnique({
-                where: { id }
-            });
-            if (!currentBook) {
-                throw new Error('Libro físico no encontrado');
-            }
-            const currentDifference = currentBook.totalStock - currentBook.availableStock;
-            const newAvailableStock = updatePhysicalBookDto.totalStock - currentDifference;
-            if (newAvailableStock < 0) {
-                throw new common_1.HttpException('Cantidad incorrecta, resuelve los prestamos del libro primero', common_1.HttpStatus.BAD_REQUEST);
-            }
-            const physicalBook = await tx.physicalBook.update({
-                where: { id },
-                data: {
-                    ...updatePhysicalBookDto,
-                    availableStock: newAvailableStock
-                }
-            });
-            return {
-                status: 'success',
-                message: 'Libro físico actualizado exitosamente',
-                data: {
-                    ...physicalBook,
-                    difference: currentDifference
-                }
-            };
-        });
-    }
     async remove(id) {
-        await this.prisma.bookOperation.deleteMany({
-            where: {
-                bookId: id
-            }
-        });
-        const removedBook = await this.prisma.physicalBook.delete({
-            where: { id }
-        });
-        return { status: 'success', message: 'Libro fisico eliminado' };
+        await this.prisma.bookOperation.deleteMany({ where: { bookId: id } });
+        await this.prisma.physicalBook.delete({ where: { id } });
+        return { status: 'success', message: 'Libro físico eliminado' };
     }
 };
 exports.PhysicalBooksService = PhysicalBooksService;

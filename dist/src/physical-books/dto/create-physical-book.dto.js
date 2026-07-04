@@ -17,13 +17,13 @@ class CreatePhysicalBookDto {
 }
 exports.CreatePhysicalBookDto = CreatePhysicalBookDto;
 __decorate([
-    (0, class_validator_1.IsString)({ message: 'El titulo del libro debe ser una cadena de texto' }),
-    (0, class_validator_1.MinLength)(3, { message: 'El nombre del libro debe tener minimo 3 caracteres' }),
+    (0, class_validator_1.IsString)({ message: 'El título del libro debe ser una cadena de texto' }),
+    (0, class_validator_1.MinLength)(3, { message: 'El nombre del libro debe tener mínimo 3 caracteres' }),
     __metadata("design:type", String)
 ], CreatePhysicalBookDto.prototype, "title", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsString)({ message: 'El codigo isbn debe ser cadena de texto' }),
+    (0, class_validator_1.IsString)({ message: 'El código ISBN debe ser cadena de texto' }),
     __metadata("design:type", String)
 ], CreatePhysicalBookDto.prototype, "isbn", void 0);
 __decorate([
@@ -33,14 +33,27 @@ __decorate([
     __metadata("design:type", Number)
 ], CreatePhysicalBookDto.prototype, "yearOfPublication", void 0);
 __decorate([
-    (0, class_validator_1.IsString)(),
-    (0, class_validator_1.IsDefined)({ message: 'Debes incluir un autor de libro' }),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)({ message: 'El ID del autor debe ser una cadena de texto' }),
     __metadata("design:type", String)
 ], CreatePhysicalBookDto.prototype, "authorId", void 0);
 __decorate([
-    (0, class_validator_1.IsString)({ message: 'Debes incluir un genero literario del libro' }),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)({ message: 'El nombre del autor debe ser una cadena de texto' }),
+    (0, class_validator_1.MinLength)(2, { message: 'El nombre del autor debe tener mínimo 2 caracteres' }),
+    __metadata("design:type", String)
+], CreatePhysicalBookDto.prototype, "authorName", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)({ message: 'El ID de la categoría debe ser una cadena de texto' }),
     __metadata("design:type", String)
 ], CreatePhysicalBookDto.prototype, "categoryId", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)({ message: 'El nombre de la categoría debe ser una cadena de texto' }),
+    (0, class_validator_1.MinLength)(2, { message: 'El género literario debe tener mínimo 2 caracteres' }),
+    __metadata("design:type", String)
+], CreatePhysicalBookDto.prototype, "categoryName", void 0);
 __decorate([
     (0, class_validator_1.IsString)(),
     (0, class_validator_1.IsDefined)({ message: 'Debes incluir un PNF' }),
@@ -48,14 +61,14 @@ __decorate([
 ], CreatePhysicalBookDto.prototype, "pnf", void 0);
 __decorate([
     (0, class_validator_1.IsString)(),
-    (0, class_validator_1.MinLength)(3, { message: 'La editorial debe tener un minimo de 3 caracteres' }),
+    (0, class_validator_1.MinLength)(3, { message: 'La editorial debe tener un mínimo de 3 caracteres' }),
     (0, class_validator_1.IsDefined)({ message: 'Debes incluir una editorial' }),
     __metadata("design:type", String)
 ], CreatePhysicalBookDto.prototype, "editorial", void 0);
 __decorate([
     (0, class_transformer_1.Transform)(({ value }) => parseInt(value)),
     (0, class_validator_1.IsInt)(),
-    (0, class_validator_1.IsPositive)({ message: 'El stock debe ser un numero positivo' }),
+    (0, class_validator_1.IsPositive)({ message: 'El stock debe ser un número positivo' }),
     __metadata("design:type", Number)
 ], CreatePhysicalBookDto.prototype, "totalStock", void 0);
 //# sourceMappingURL=create-physical-book.dto.js.map

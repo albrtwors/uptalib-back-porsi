@@ -24,6 +24,9 @@ const item_type_module_1 = require("./item-type/item-type.module");
 const inventory_operation_module_1 = require("./inventory-operation/inventory-operation.module");
 const logs_module_1 = require("./logs/logs.module");
 const backup_module_1 = require("./backup/backup.module");
+const ai_books_module_1 = require("./ai-books/ai-books.module");
+const ai_inventory_module_1 = require("./ai-inventory/ai-inventory.module");
+const ai_physical_book_module_1 = require("./ai-physical-book/ai-physical-book.module");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -50,6 +53,9 @@ exports.AppModule = AppModule = __decorate([
             inventory_operation_module_1.InventoryOperationModule,
             logs_module_1.LogsModule,
             backup_module_1.BackupModule,
+            ai_books_module_1.AiBooksModule,
+            ai_inventory_module_1.AiInventoryModule,
+            ai_physical_book_module_1.AiPhysicalBookModule,
         ],
         providers: [],
     })

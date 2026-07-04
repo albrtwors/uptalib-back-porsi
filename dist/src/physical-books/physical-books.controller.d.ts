@@ -12,6 +12,7 @@ export declare class PhysicalBooksController {
             title: string;
             createdAt: Date;
             updatedAt: Date;
+            pnf: import(".prisma/client").$Enums.Pnf | null;
             totalStock: number;
             availableStock: number;
             status: import(".prisma/client").$Enums.BookStatus;
@@ -19,7 +20,6 @@ export declare class PhysicalBooksController {
             yearOfPublication: number;
             authorId: string;
             categoryId: string;
-            pnf: import(".prisma/client").$Enums.Pnf | null;
             editorial: string | null;
         };
     }>;
@@ -38,6 +38,7 @@ export declare class PhysicalBooksController {
             title: string;
             createdAt: Date;
             updatedAt: Date;
+            pnf: import(".prisma/client").$Enums.Pnf | null;
             totalStock: number;
             availableStock: number;
             status: import(".prisma/client").$Enums.BookStatus;
@@ -45,7 +46,6 @@ export declare class PhysicalBooksController {
             yearOfPublication: number;
             authorId: string;
             categoryId: string;
-            pnf: import(".prisma/client").$Enums.Pnf | null;
             editorial: string | null;
         })[];
         totalPages: number;
@@ -55,11 +55,11 @@ export declare class PhysicalBooksController {
         status: string;
         message: string;
         data: {
-            difference: number;
             id: string;
             title: string;
             createdAt: Date;
             updatedAt: Date;
+            pnf: import(".prisma/client").$Enums.Pnf | null;
             totalStock: number;
             availableStock: number;
             status: import(".prisma/client").$Enums.BookStatus;
@@ -67,7 +67,6 @@ export declare class PhysicalBooksController {
             yearOfPublication: number;
             authorId: string;
             categoryId: string;
-            pnf: import(".prisma/client").$Enums.Pnf | null;
             editorial: string | null;
         };
     }>;

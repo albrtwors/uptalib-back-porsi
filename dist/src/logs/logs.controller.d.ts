@@ -18,10 +18,10 @@ export declare class LogsController {
         } & {
             id: string;
             userId: number;
-            action: string;
-            ip: string | null;
             createdAt: Date;
             updatedAt: Date;
+            action: string;
+            ip: string | null;
         })[];
         totalPages: number;
     }>;

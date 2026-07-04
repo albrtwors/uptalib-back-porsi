@@ -40,10 +40,10 @@ async function main() {
     const salt = await bcrypt.genSalt(10);
     const hashed = await bcrypt.hash('Mibebecito10', salt);
     const user = await prisma.user.upsert({
-        where: { email: 'flbertojgsoto@gmail.com' },
+        where: { email: 'albertojgsoto@gmail.com' },
         update: {},
         create: {
-            email: 'flbertojgsoto@gmail.com',
+            email: 'albertojgsoto@gmail.com',
             name: 'albrtwors',
             password: hashed,
             role: 'ADMIN'

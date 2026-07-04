@@ -32,7 +32,7 @@ let PhysicalBooksController = class PhysicalBooksController {
         return this.physicalBooksService.findAll(query);
     }
     findOne(id) {
-        return this.physicalBooksService.findOne(+id);
+        return 'this.physicalBooksService.findOne(+id);';
     }
     update(id, updatePhysicalBookDto) {
         return this.physicalBooksService.update(id, updatePhysicalBookDto);

@@ -1,13 +1,15 @@
 import { Injectable, ConflictException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateUserDto } from './dto/user.dto';
+import { MailService } from '../mail/mail.service';
+import { CODE_TTL_MS, generateVerificationCode, hashCode } from '../functions/code/code';
 import * as bcrypt from 'bcrypt';
 import { Role } from '@prisma/client'; // Importamos el enum real de Prisma
 import { getPagination } from '../functions/pagination/getPagination';
 
 @Injectable()
 export class UsersService {
-  constructor(private prisma: PrismaService) { }
+  constructor(private prisma: PrismaService, private mailService: MailService) { }
 
   async findAll(query: any) {
     const search = query.search || ''
@@ -56,12 +58,17 @@ export class UsersService {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    return this.prisma.user.create({
+    const verificationCode = generateVerificationCode();
+
+    const user = await this.prisma.user.create({
       data: {
         email,
         name,
         password: hashedPassword,
         role: "USER",
+        emailVerified: false,
+        verificationCode: await hashCode(verificationCode),
+        verificationCodeExpires: new Date(Date.now() + CODE_TTL_MS),
       },
       select: {
         id: true,
@@ -70,6 +77,10 @@ export class UsersService {
         role: true,
       },
     });
+
+    await this.mailService.sendVerificationCode(email, verificationCode);
+
+    return user;
   }
 
 

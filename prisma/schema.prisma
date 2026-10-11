@@ -104,14 +104,19 @@ enum OperationType {
 // Usuarios, roles y libros guardados
 
 model User {
-  id         Int         @id @default(autoincrement())
-  email      String      @unique
-  name       String
-  password   String
-  isBlocked  Boolean     @default(false)
-  role       Role        @default(USER)
-  saves      SavedBook[]
-  operations Operation[]
+  id                      Int         @id @default(autoincrement())
+  email                   String      @unique
+  name                    String
+  password                String
+  isBlocked               Boolean     @default(false)
+  emailVerified           Boolean     @default(false)
+  verificationCode        String?
+  verificationCodeExpires DateTime?
+  resetCode               String?
+  resetCodeExpires        DateTime?
+  role                    Role        @default(USER)
+  saves                   SavedBook[]
+  operations              Operation[]
 }
 
 enum Role {

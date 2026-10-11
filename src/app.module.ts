@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 import { PrismaModule } from '../prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './user/user.module';
@@ -23,6 +24,7 @@ import { AiInventoryModule } from './ai-inventory/ai-inventory.module';
 import { AiPhysicalBookModule } from './ai-physical-book/ai-physical-book.module';
 @Module({
   imports: [
+    ConfigModule.forRoot({ isGlobal: true }),
     ServeStaticModule.forRoot({
       rootPath: join(process.cwd(), 'public'), // Path to your local docs folder
       serveRoot: '/public', // Optional: Files will be available at http://localhost:3000/docs

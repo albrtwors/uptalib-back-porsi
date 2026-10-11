@@ -1,6 +1,6 @@
 import { ItemStatus } from "@prisma/client"
 import { Transform } from "class-transformer"
-import { IsDefined, IsInt, IsOptional, IsPositive, IsString, MaxLength, MinLength } from "class-validator"
+import { IsArray, IsDefined, IsInt, IsOptional, IsPositive, IsString, MaxLength, MinLength } from "class-validator"
 
 export class CreateInventoryDto {
 
@@ -33,4 +33,50 @@ export class CreateInventoryDto {
     @IsOptional()
     @MaxLength(200, { message: 'La descripción debe tener un máximo de 200 caracteres' })
     description?: string
+
+    // 💡 Autores (uno o más por ID existente)
+    @IsOptional()
+    @IsArray({ message: 'Los autores deben ser un arreglo' })
+    @IsString({ each: true, message: 'Cada ID de autor debe ser una cadena de texto' })
+    authorIds?: string[]
+
+    // 💡 Autores (uno o más) para crear/resolver desde cero por nombre
+    @IsOptional()
+    @IsArray({ message: 'Los autores deben ser un arreglo' })
+    @IsString({ each: true, message: 'Cada nombre de autor debe ser una cadena de texto' })
+    authorNames?: string[]
+
+    // 💡 Compatibilidad hacia atrás: un solo nombre de autor
+    @IsOptional()
+    @IsString({ message: 'El nombre del autor debe ser una cadena de texto' })
+    @MinLength(2, { message: 'El nombre del autor debe tener mínimo 2 caracteres' })
+    authorName?: string
+
+    // 💡 Compatibilidad hacia atrás: un solo autor por ID
+    @IsOptional()
+    @IsString({ message: 'El ID del autor debe ser una cadena de texto' })
+    authorId?: string
+
+    // 💡 Categorías (uno o más por ID existente)
+    @IsOptional()
+    @IsArray({ message: 'Las categorías deben ser un arreglo' })
+    @IsString({ each: true, message: 'Cada ID de categoría debe ser una cadena de texto' })
+    categoryIds?: string[]
+
+    // 💡 Categorías (uno o más) para crear/resolver desde cero por nombre
+    @IsOptional()
+    @IsArray({ message: 'Las categorías deben ser un arreglo' })
+    @IsString({ each: true, message: 'Cada nombre de categoría debe ser una cadena de texto' })
+    categoryNames?: string[]
+
+    // 💡 Compatibilidad hacia atrás: un solo nombre de categoría
+    @IsOptional()
+    @IsString({ message: 'El nombre de la categoría debe ser una cadena de texto' })
+    @MinLength(2, { message: 'El nombre de la categoría debe tener mínimo 2 caracteres' })
+    categoryName?: string
+
+    // 💡 Compatibilidad hacia atrás: una sola categoría por ID
+    @IsOptional()
+    @IsString({ message: 'El ID de la categoría debe ser una cadena de texto' })
+    categoryId?: string
 }

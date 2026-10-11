@@ -1,10 +1,7 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseInterceptors, UploadedFile, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards } from '@nestjs/common';
 import { InventoryService } from './inventory.service';
 import { CreateItemInventory } from './dto/create-item-dto';
 import { EditItemInventory } from './dto/edit-item-dto';
-import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
-import { diskStorage } from 'multer';
-import { storageFor1File } from '../books/utils/storage';
 import { CreateInventoryDto } from './dto/create-inventory.dto';
 import { Role } from '@prisma/client';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -19,8 +16,7 @@ export class InventoryController {
   @Post()
   @Roles(Role.LIBRARIAN, Role.ADMIN)
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @UseInterceptors(FileInterceptor('img', storageFor1File))
-  create(@Body() createInventoryDto: CreateInventoryDto, @UploadedFile() img: Express.Multer.File) {
+  create(@Body() createInventoryDto: CreateInventoryDto) {
 
     return this.inventoryService.create(createInventoryDto);
 

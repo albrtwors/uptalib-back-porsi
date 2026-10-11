@@ -30,11 +30,13 @@ export class AiPhysicalBookService implements OnModuleInit {
         // 💡 NORMALIZACIÓN: Sincronizamos las propiedades relacionales complejas del front (author, category) a strings planos
         let normalizedContext = null;
         if (currentBookData) {
+            const authors = Array.isArray(currentBookData.authors) ? currentBookData.authors : (currentBookData.author ? [currentBookData.author] : []);
+            const categories = Array.isArray(currentBookData.categories) ? currentBookData.categories : (currentBookData.category ? [currentBookData.category] : []);
             normalizedContext = {
                 title: currentBookData.title || null,
                 isbn: currentBookData.isbn || null,
-                authorName: currentBookData.author?.name || null,
-                categoryName: currentBookData.category?.name || null,
+                authorName: authors[0]?.name || authors[0] || null,
+                categoryName: categories[0]?.name || categories[0] || null,
                 pnf: currentBookData.pnf || null,
                 yearOfPublication: currentBookData.yearOfPublication?.toString() || null,
                 editorial: currentBookData.editorial || null,

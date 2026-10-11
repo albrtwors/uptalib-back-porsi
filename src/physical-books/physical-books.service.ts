@@ -1,58 +1,108 @@
 import { BadRequestException, HttpException, HttpStatus, Injectable } from '@nestjs/common';
-import { CreatePhysicalBookDto } from './dto/create-physical-book.dto';
-import { UpdatePhysicalBookDto } from './dto/update-physical-book.dto';
 import { PrismaService } from 'prisma/prisma.service';
 
 @Injectable()
 export class PhysicalBooksService {
   constructor(private prisma: PrismaService) { }
 
+  private async resolveAuthorIds(tx: any, ids: string[] = [], names: string[] = []): Promise<string[]> {
+    const resolved: string[] = [];
+
+    for (const id of ids) {
+      if (id && !resolved.includes(id)) resolved.push(id);
+    }
+
+    for (const name of names) {
+      const cleaned = `${name}`.trim();
+      if (!cleaned) continue;
+
+      let author = await tx.author.findFirst({
+        where: { name: { equals: cleaned, mode: 'insensitive' } }
+      });
+
+      if (!author) {
+        author = await tx.author.create({ data: { name: cleaned } });
+      }
+
+      if (!resolved.includes(author.id)) resolved.push(author.id);
+    }
+
+    return resolved;
+  }
+
+  private async resolveCategoryIds(tx: any, ids: string[] = [], names: string[] = []): Promise<string[]> {
+    const resolved: string[] = [];
+
+    for (const id of ids) {
+      if (id && !resolved.includes(id)) resolved.push(id);
+    }
+
+    for (const name of names) {
+      const cleaned = `${name}`.trim();
+      if (!cleaned) continue;
+
+      let category = await tx.category.findFirst({
+        where: { name: { equals: cleaned, mode: 'insensitive' } }
+      });
+
+      if (!category) {
+        category = await tx.category.create({ data: { name: cleaned } });
+      }
+
+      if (!resolved.includes(category.id)) resolved.push(category.id);
+    }
+
+    return resolved;
+  }
+
   async create(createPhysicalBookDto: any) {
     return this.prisma.$transaction(async (tx) => {
-      const { authorId, categoryId, authorName, categoryName, ...restOfDto } = createPhysicalBookDto;
+      const {
+        authorId,
+        authorName,
+        authorIds = [],
+        authorNames = [],
+        categoryId,
+        categoryName,
+        categoryIds = [],
+        categoryNames = [],
+        ...restOfDto
+      } = createPhysicalBookDto;
 
-      let resolvedAuthorId = authorId;
-      let resolvedCategoryId = categoryId;
+      // 💡 Resolución de múltiples autores (copia de la lógica del módulo de libros digitales)
+      const resolvedAuthorIds = await this.resolveAuthorIds(tx, [
+        ...(authorId ? [authorId] : []),
+        ...authorIds
+      ], [
+        ...(authorName ? [authorName] : []),
+        ...authorNames
+      ]);
 
-      // 👤 Resolución manual de Autor
-      if (!resolvedAuthorId && authorName && authorName.trim() !== '') {
-        const cleanedName = authorName.trim();
-        let author = await tx.author.findFirst({
-          where: { name: { equals: cleanedName, mode: 'insensitive' } }
-        });
+      // 💡 Resolución de múltiples categorías / géneros
+      const resolvedCategoryIds = await this.resolveCategoryIds(tx, [
+        ...(categoryId ? [categoryId] : []),
+        ...categoryIds
+      ], [
+        ...(categoryName ? [categoryName] : []),
+        ...categoryNames
+      ]);
 
-        if (!author) {
-          author = await tx.author.create({
-            data: { name: cleanedName }
-          });
-        }
-        resolvedAuthorId = author.id;
-      }
-
-      // 📂 Resolución manual de Categoría / Género
-      if (!resolvedCategoryId && categoryName && categoryName.trim() !== '') {
-        const cleanedCategory = categoryName.trim();
-        let category = await tx.category.findFirst({
-          where: { name: { equals: cleanedCategory, mode: 'insensitive' } }
-        });
-
-        if (!category) {
-          category = await tx.category.create({
-            data: { name: cleanedCategory }
-          });
-        }
-        resolvedCategoryId = category.id;
-      }
-
-      // Guardar el libro físico usando las IDs resueltas directamente
       const physicalBook = await tx.physicalBook.create({
         data: {
           ...restOfDto,
           yearOfPublication: parseInt(restOfDto.yearOfPublication) || undefined,
           totalStock: parseInt(restOfDto.totalStock) || 0,
           availableStock: parseInt(restOfDto.totalStock) || 0,
-          authorId: resolvedAuthorId || undefined,
-          categoryId: resolvedCategoryId || undefined
+          authors: {
+            connect: resolvedAuthorIds.map(id => ({ id }))
+          },
+          categories: {
+            connect: resolvedCategoryIds.map(id => ({ id }))
+          }
+        },
+        include: {
+          authors: { select: { id: true, name: true } },
+          categories: { select: { id: true, name: true } }
         }
       });
 
@@ -69,40 +119,35 @@ export class PhysicalBooksService {
       const currentBook = await tx.physicalBook.findUnique({ where: { id } });
       if (!currentBook) throw new HttpException('Libro físico no encontrado', HttpStatus.NOT_FOUND);
 
-      const { authorId, categoryId, authorName, categoryName, ...restOfDto } = updatePhysicalBookDto;
+      const {
+        authorId,
+        authorName,
+        authorIds,
+        authorNames,
+        categoryId,
+        categoryName,
+        categoryIds,
+        categoryNames,
+        ...restOfDto
+      } = updatePhysicalBookDto;
 
-      let resolvedAuthorId = authorId;
-      let resolvedCategoryId = categoryId;
+      // 💡 Múltiples autores en actualización (set = desconecta los no incluidos)
+      const resolvedAuthorIds = await this.resolveAuthorIds(tx, [
+        ...(authorId ? [authorId] : []),
+        ...(authorIds ?? [])
+      ], [
+        ...(authorName ? [authorName] : []),
+        ...(authorNames ?? [])
+      ]);
 
-      // 👤 Resolución manual de Autor en actualización
-      if (!resolvedAuthorId && authorName && authorName.trim() !== '') {
-        const cleanedName = authorName.trim();
-        let author = await tx.author.findFirst({
-          where: { name: { equals: cleanedName, mode: 'insensitive' } }
-        });
-
-        if (!author) {
-          author = await tx.author.create({
-            data: { name: cleanedName }
-          });
-        }
-        resolvedAuthorId = author.id;
-      }
-
-      // 📂 Resolución manual de Categoría en actualización
-      if (!resolvedCategoryId && categoryName && categoryName.trim() !== '') {
-        const cleanedCategory = categoryName.trim();
-        let category = await tx.category.findFirst({
-          where: { name: { equals: cleanedCategory, mode: 'insensitive' } }
-        });
-
-        if (!category) {
-          category = await tx.category.create({
-            data: { name: cleanedCategory }
-          });
-        }
-        resolvedCategoryId = category.id;
-      }
+      // 💡 Múltiples categorías en actualización
+      const resolvedCategoryIds = await this.resolveCategoryIds(tx, [
+        ...(categoryId ? [categoryId] : []),
+        ...(categoryIds ?? [])
+      ], [
+        ...(categoryName ? [categoryName] : []),
+        ...(categoryNames ?? [])
+      ]);
 
       const currentDifference = currentBook.totalStock - currentBook.availableStock;
       const parsedTotalStock = parseInt(restOfDto.totalStock) || currentBook.totalStock;
@@ -112,15 +157,31 @@ export class PhysicalBooksService {
         throw new HttpException('Cantidad incorrecta, resuelve los préstamos del libro primero', HttpStatus.BAD_REQUEST);
       }
 
+      const updateData: any = {
+        ...restOfDto,
+        yearOfPublication: parseInt(restOfDto.yearOfPublication) || undefined,
+        totalStock: parsedTotalStock,
+        availableStock: newAvailableStock
+      };
+
+      if (authorIds !== undefined || authorId !== undefined || authorNames !== undefined || authorName !== undefined) {
+        updateData.authors = {
+          set: resolvedAuthorIds.map(id => ({ id }))
+        };
+      }
+
+      if (categoryIds !== undefined || categoryId !== undefined || categoryNames !== undefined || categoryName !== undefined) {
+        updateData.categories = {
+          set: resolvedCategoryIds.map(id => ({ id }))
+        };
+      }
+
       const physicalBook = await tx.physicalBook.update({
         where: { id },
-        data: {
-          ...restOfDto,
-          yearOfPublication: parseInt(restOfDto.yearOfPublication) || undefined,
-          totalStock: parsedTotalStock,
-          availableStock: newAvailableStock,
-          authorId: resolvedAuthorId || undefined,
-          categoryId: resolvedCategoryId || undefined
+        data: updateData,
+        include: {
+          authors: { select: { id: true, name: true } },
+          categories: { select: { id: true, name: true } }
         }
       });
 
@@ -146,17 +207,31 @@ export class PhysicalBooksService {
       where.AND = [{ title: { contains: search, mode: 'insensitive' } }];
     }
 
-    // 💡 Aquí aplicamos mode: 'insensitive' al filtro por relación de categoría
+    // 💡 Filtro por múltiples categorías: coincide si el libro tiene al menos una con ese nombre
     if (query.genre) {
       const genreFilter = {
-        category: {
-          name: {
-            contains: query.genre,
-            mode: 'insensitive' // 👈 Evita problemas si viene en mayúsculas o minúsculas
+        categories: {
+          some: {
+            name: {
+              contains: query.genre,
+              mode: 'insensitive'
+            }
           }
         }
       };
       where.AND ? where.AND.push(genreFilter) : where.AND = [genreFilter];
+    }
+
+    // 💡 Filtro por múltiples autores: coincide si el libro tiene al menos uno con ese nombre
+    if (query.authorName) {
+      const authorFilter = {
+        authors: {
+          some: {
+            name: { contains: query.authorName, mode: 'insensitive' }
+          }
+        }
+      };
+      where.AND ? where.AND.push(authorFilter) : where.AND = [authorFilter];
     }
 
     if (query.pnf != 'todos') {
@@ -167,9 +242,10 @@ export class PhysicalBooksService {
     const totalPages = await this.prisma.physicalBook.count({ where });
     const data = await this.prisma.physicalBook.findMany({
       where, take, skip, include: {
-        author: { select: { id: true, name: true } },
-        category: { select: { id: true, name: true } }
+        authors: { select: { id: true, name: true } },
+        categories: { select: { id: true, name: true } }
       },
+      orderBy: { createdAt: 'desc' }
     });
     return { data, totalPages };
   }

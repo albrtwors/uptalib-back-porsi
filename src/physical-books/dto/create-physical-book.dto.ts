@@ -1,6 +1,6 @@
-import { Pnf } from "@prisma/client";
 import { Transform } from "class-transformer";
-import { IsDefined, IsInt, IsOptional, IsPositive, IsString, MinLength } from "class-validator";
+import { IsArray, IsDefined, IsInt, IsOptional, IsPositive, IsString, MinLength } from "class-validator";
+import { Pnf } from "@prisma/client";
 
 export class CreatePhysicalBookDto {
 
@@ -17,27 +17,51 @@ export class CreatePhysicalBookDto {
     @IsPositive({ message: 'El año de publicación debe ser un número positivo' })
     yearOfPublication: number;
 
-    // 💡 Ahora es opcional porque puede venir authorName en su lugar
+    // 💡 Autores (uno o más por ID existente)
     @IsOptional()
-    @IsString({ message: 'El ID del autor debe ser una cadena de texto' })
-    authorId?: string;
+    @IsArray({ message: 'Los autores deben ser un arreglo' })
+    @IsString({ each: true, message: 'Cada ID de autor debe ser una cadena de texto' })
+    authorIds?: string[];
 
-    // 💡 Campo nuevo para cuando se crea un autor desde cero
+    // 💡 Autores (uno o más) para crear/resolver desde cero por nombre
+    @IsOptional()
+    @IsArray({ message: 'Los autores deben ser un arreglo' })
+    @IsString({ each: true, message: 'Cada nombre de autor debe ser una cadena de texto' })
+    authorNames?: string[];
+
+    // 💡 Compatibilidad hacia atrás: un solo nombre de autor
     @IsOptional()
     @IsString({ message: 'El nombre del autor debe ser una cadena de texto' })
     @MinLength(2, { message: 'El nombre del autor debe tener mínimo 2 caracteres' })
     authorName?: string;
 
-    // 💡 Ahora es opcional porque puede venir categoryName en su lugar
+    // 💡 Compatibilidad hacia atrás: un solo autor por ID
     @IsOptional()
-    @IsString({ message: 'El ID de la categoría debe ser una cadena de texto' })
-    categoryId?: string;
+    @IsString({ message: 'El ID del autor debe ser una cadena de texto' })
+    authorId?: string;
 
-    // 💡 Campo nuevo para cuando se crea una categoría desde cero
+    // 💡 Categorías / géneros (uno o más por ID existente)
+    @IsOptional()
+    @IsArray({ message: 'Las categorías deben ser un arreglo' })
+    @IsString({ each: true, message: 'Cada ID de categoría debe ser una cadena de texto' })
+    categoryIds?: string[];
+
+    // 💡 Categorías / géneros (uno o más) para crear/resolver desde cero por nombre
+    @IsOptional()
+    @IsArray({ message: 'Las categorías deben ser un arreglo' })
+    @IsString({ each: true, message: 'Cada nombre de categoría debe ser una cadena de texto' })
+    categoryNames?: string[];
+
+    // 💡 Compatibilidad hacia atrás: un solo nombre de categoría
     @IsOptional()
     @IsString({ message: 'El nombre de la categoría debe ser una cadena de texto' })
     @MinLength(2, { message: 'El género literario debe tener mínimo 2 caracteres' })
     categoryName?: string;
+
+    // 💡 Compatibilidad hacia atrás: una sola categoría por ID
+    @IsOptional()
+    @IsString({ message: 'El ID de la categoría debe ser una cadena de texto' })
+    categoryId?: string;
 
     @IsString()
     @IsDefined({ message: 'Debes incluir un PNF' })

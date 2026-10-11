@@ -19,6 +19,7 @@ model Category {
   id            String         @id @default(cuid())
   name          String         @unique
   physicalBooks PhysicalBook[]
+  items         Item[]
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
 }
@@ -27,16 +28,14 @@ model PhysicalBook {
   id                String          @id @default(cuid())
   isbn              String?
   title             String
-  authorId          String
-  categoryId        String
   pnf               Pnf?
   yearOfPublication Int
   editorial         String?
   totalStock        Int
   availableStock    Int
   status            BookStatus      @default(DISPONIBLE)
-  author            Author          @relation(fields: [authorId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  category          Category        @relation(fields: [categoryId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  authors           Author[]
+  categories        Category[]
   operations        BookOperation[]
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
@@ -126,6 +125,7 @@ model Author {
   name          String
   physicalBooks PhysicalBook[]
   books         Book[] // 💡 Cambiado: Relación implícita limpia para alinearse al orden alfabético de Postgres
+  items         Item[]
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
 }
@@ -173,15 +173,17 @@ model SavedBook {
 // Inventario
 
 model Item {
-  id             String     @id @default(cuid())
+  id             String          @id @default(cuid())
   name           String
   code           String?
   description    String?
   totalStock     Int
   availableStock Int
-  type           ItemType   @relation(fields: [typeId], references: [id])
+  type           ItemType        @relation(fields: [typeId], references: [id])
   typeId         String
   status         ItemStatus
+  authors        Author[]
+  categories     Category[]
 
   itemOperations ItemOperation[]
 

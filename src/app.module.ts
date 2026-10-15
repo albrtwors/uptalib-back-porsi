@@ -19,6 +19,7 @@ import { SupabaseService } from './supabase/supabase.service';
 import { SupabaseModule } from './supabase/supabase.module';
 import { FilesService } from './files/files.service';
 import { BackupModule } from './backup/backup.module';
+import { SyncModule } from './sync/sync.module';
 import { AiBooksModule } from './ai-books/ai-books.module';
 import { AiInventoryModule } from './ai-inventory/ai-inventory.module';
 import { AiPhysicalBookModule } from './ai-physical-book/ai-physical-book.module';
@@ -46,6 +47,7 @@ import { AiPhysicalBookModule } from './ai-physical-book/ai-physical-book.module
     InventoryOperationModule,
     LogsModule,
     BackupModule,
+    SyncModule,
     AiBooksModule,
     AiInventoryModule,
     AiPhysicalBookModule,

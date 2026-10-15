@@ -27,7 +27,7 @@ export class AuthorService {
     if (search) {
       where.OR = [
         {
-          name: { contains: search },
+          name: { contains: search, mode: 'insensitive' },
         },
 
       ]

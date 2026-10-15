@@ -20,7 +20,7 @@ export class CategoryService {
     if (search) {
       where.OR = [
         {
-          name: { contains: search },
+          name: { contains: search, mode: 'insensitive' },
         },
 
       ]

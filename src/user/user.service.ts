@@ -18,8 +18,8 @@ export class UsersService {
 
     if (query.search) {
       where.OR = [
-        { name: { contains: search } },
-        { email: { contains: search } }
+        { name: { contains: search, mode: 'insensitive' } },
+        { email: { contains: search, mode: 'insensitive' } }
       ]
     }
 

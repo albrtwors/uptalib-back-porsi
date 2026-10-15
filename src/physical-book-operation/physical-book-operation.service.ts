@@ -23,7 +23,7 @@ export class PhysicalBookOperationService {
     const skip = (page - 1) * limit
 
     if (query.search != '') {
-      QUERY.where = { OR: [{ book: { title: { contains: query.search } } }] }
+      QUERY.where = { OR: [{ book: { title: { contains: query.search, mode: 'insensitive' } } }] }
     }
 
     const totalPages = await this.prisma.bookOperation.count({
@@ -145,7 +145,7 @@ export class PhysicalBookOperationService {
 
 
     if (query.search) {
-      QUERY.where = { type: 'PRESTAMO', OR: [{ book: { title: { contains: query.search } } }] }
+      QUERY.where = { type: 'PRESTAMO', OR: [{ book: { title: { contains: query.search, mode: 'insensitive' } } }] }
     }
 
     QUERY.take = parseInt(limit)

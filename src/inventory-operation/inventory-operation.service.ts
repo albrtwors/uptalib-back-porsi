@@ -232,7 +232,7 @@ export class InventoryOperationService {
 
     if (query.search) {
       where.OR = [
-        { item: { name: { contains: query.search } } }
+        { item: { name: { contains: query.search, mode: 'insensitive' } } }
       ]
     }
 
@@ -262,7 +262,7 @@ export class InventoryOperationService {
 
     if (query.search) {
       where.AND = [
-        { item: { name: { contains: query.search } } }
+        { item: { name: { contains: query.search, mode: 'insensitive' } } }
       ]
     }
     const totalPages = await this.prisma.itemOperation.count({

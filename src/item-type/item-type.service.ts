@@ -16,7 +16,7 @@ export class ItemTypeService {
     const where: any = {}
     if (query.search) {
       where.OR = [
-        { name: { contains: query.search } }
+        { name: { contains: query.search, mode: 'insensitive' } }
       ]
     }
     return await this.prisma.itemType.findMany({ where, take: 10 });

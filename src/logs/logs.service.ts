@@ -17,7 +17,7 @@ export class LogsService {
     const where: any = {}
     const { take, page, skip } = getPagination(query)
     if (search) {
-      where.OR = [{ action: { contains: search } }]
+      where.OR = [{ action: { contains: search, mode: 'insensitive' } }]
     }
     const data = await this.prisma.operation.findMany({ where, take, skip, orderBy: { createdAt: 'desc' }, include: { user: true } })
     const totalPages = await this.prisma.operation.count({ where })

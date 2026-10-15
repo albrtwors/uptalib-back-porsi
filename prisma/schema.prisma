@@ -37,13 +37,31 @@ model PhysicalBook {
   authors           Author[]
   categories        Category[]
   operations        BookOperation[]
+  copies            BookCopy[]
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
+}
+
+// Ejemplar / copia física individual de un libro
+model BookCopy {
+  id           String          @id @default(cuid())
+  code         String          @unique
+  status       CopyStatus      @default(DISPONIBLE)
+  location     String?
+  observations String?
+  bookId       String
+  book         PhysicalBook    @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  operations   BookOperation[]
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  @@index([bookId, status])
 }
 
 model BookOperation {
   id             String        @id @default(cuid())
   bookId         String
+  copyId         String?
   type           OperationType
   quantity       Int
   observations   String?
@@ -52,10 +70,12 @@ model BookOperation {
   personNames    String
   personSurNames String
   book           PhysicalBook  @relation(fields: [bookId], references: [id])
+  copy           BookCopy?      @relation(fields: [copyId], references: [id], onDelete: SetNull)
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
   @@index([bookId, createdAt])
+  @@index([copyId])
 }
 
 model Operation {
@@ -72,6 +92,13 @@ enum BookStatus {
   DISPONIBLE
   AGOTADO
   MANTENIMIENTO
+}
+
+enum CopyStatus {
+  DISPONIBLE
+  PRESTADO
+  MANTENIMIENTO
+  BAJA
 }
 
 enum ItemStatus {
@@ -191,14 +218,32 @@ model Item {
   categories     Category[]
 
   itemOperations ItemOperation[]
+  copies         ItemCopy[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
+// Ejemplar / copia individual de un artículo de inventario
+model ItemCopy {
+  id           String          @id @default(cuid())
+  code         String          @unique
+  status       CopyStatus      @default(DISPONIBLE)
+  location     String?
+  observations String?
+  itemId       String
+  item         Item            @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  operations   ItemOperation[]
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  @@index([itemId, status])
+}
+
 model ItemOperation {
   id             String        @id @default(cuid())
   itemId         String
+  copyId         String?
   type           OperationType
   quantity       Int
   observations   String?
@@ -207,10 +252,12 @@ model ItemOperation {
   personNames    String
   personSurNames String
   item           Item          @relation(fields: [itemId], references: [id])
+  copy           ItemCopy?      @relation(fields: [copyId], references: [id], onDelete: SetNull)
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
   @@index([itemId, createdAt])
+  @@index([copyId])
 }
 
 model ItemType {

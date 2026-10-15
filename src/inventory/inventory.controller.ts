@@ -29,6 +29,35 @@ export class InventoryController {
     return this.inventoryService.findAll(query);
   }
 
+  // 📦 Ejemplares individuales del artículo
+  @Get(':id/copies')
+  @Roles(Role.LIBRARIAN, Role.ADMIN)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  findCopies(@Param('id') id: string) {
+    return this.inventoryService.findCopies(id);
+  }
+
+  @Post(':id/copies')
+  @Roles(Role.LIBRARIAN, Role.ADMIN)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  addCopies(@Param('id') id: string, @Body() dto: any) {
+    return this.inventoryService.addCopies(id, dto);
+  }
+
+  @Patch('copies/:copyId')
+  @Roles(Role.LIBRARIAN, Role.ADMIN)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  updateCopy(@Param('copyId') copyId: string, @Body() dto: any) {
+    return this.inventoryService.updateCopy(copyId, dto);
+  }
+
+  @Delete('copies/:copyId')
+  @Roles(Role.LIBRARIAN, Role.ADMIN)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  removeCopy(@Param('copyId') copyId: string) {
+    return this.inventoryService.removeCopy(copyId);
+  }
+
   @Get(':id')
   @Roles(Role.LIBRARIAN, Role.ADMIN)
   @UseGuards(JwtAuthGuard, RolesGuard)

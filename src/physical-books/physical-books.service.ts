@@ -1,5 +1,7 @@
 import { BadRequestException, HttpException, HttpStatus, Injectable } from '@nestjs/common';
+import { CopyStatus } from '@prisma/client';
 import { PrismaService } from 'prisma/prisma.service';
+import { createBookCopies, recalcBookStock } from '../utils/copies';
 
 @Injectable()
 export class PhysicalBooksService {
@@ -55,6 +57,67 @@ export class PhysicalBooksService {
     return resolved;
   }
 
+  /**
+   * Crea ejemplares para un libro respetando códigos solicitados y
+   * autogenerando los restantes. Devuelve las copias creadas.
+   */
+  private async createCopies(
+    tx: any,
+    book: { id: string; isbn?: string | null },
+    quantity: number,
+    requestedCodes: string[] = [],
+    extra: { location?: string | null; observations?: string | null } = {}
+  ) {
+    return createBookCopies(tx, book, quantity, requestedCodes, extra);
+  }
+
+  /**
+   * Reconcilia el número de ejemplares activos con un total objetivo.
+   * Devuelve false cuando el libro no tiene ejemplares (modo legacy).
+   */
+  private async reconcileCopies(
+    tx: any,
+    book: { id: string; isbn?: string | null },
+    targetTotal: number,
+    requestedCodes: string[] = []
+  ): Promise<boolean> {
+    const copies = await tx.bookCopy.findMany({
+      where: { bookId: book.id },
+      orderBy: { createdAt: 'asc' }
+    });
+
+    if (copies.length === 0) return false;
+
+    const active = copies.filter((c: any) => c.status !== CopyStatus.BAJA);
+    const loaned = active.filter((c: any) => c.status === CopyStatus.PRESTADO);
+    const diff = targetTotal - active.length;
+
+    if (diff > 0) {
+      await this.createCopies(tx, book, diff, requestedCodes);
+    } else if (diff < 0) {
+      const removable = active.filter((c: any) => c.status !== CopyStatus.PRESTADO);
+      if (Math.abs(diff) > removable.length) {
+        throw new HttpException(
+          'Cantidad incorrecta, resuelve los préstamos del libro primero',
+          HttpStatus.BAD_REQUEST
+        );
+      }
+      // Prioriza dar de baja ejemplares disponibles antes que en mantenimiento.
+      const ordered = [
+        ...removable.filter((c: any) => c.status === CopyStatus.DISPONIBLE),
+        ...removable.filter((c: any) => c.status !== CopyStatus.DISPONIBLE)
+      ];
+      for (let i = 0; i < Math.abs(diff); i += 1) {
+        await tx.bookCopy.update({
+          where: { id: ordered[i].id },
+          data: { status: CopyStatus.BAJA }
+        });
+      }
+    }
+
+    return true;
+  }
+
   async create(createPhysicalBookDto: any) {
     return this.prisma.$transaction(async (tx) => {
       const {
@@ -66,6 +129,8 @@ export class PhysicalBooksService {
         categoryName,
         categoryIds = [],
         categoryNames = [],
+        copyCodes = [],
+        totalStock,
         ...restOfDto
       } = createPhysicalBookDto;
 
@@ -87,12 +152,14 @@ export class PhysicalBooksService {
         ...categoryNames
       ]);
 
+      const parsedTotal = parseInt(totalStock) || 0;
+
       const physicalBook = await tx.physicalBook.create({
         data: {
           ...restOfDto,
           yearOfPublication: parseInt(restOfDto.yearOfPublication) || undefined,
-          totalStock: parseInt(restOfDto.totalStock) || 0,
-          availableStock: parseInt(restOfDto.totalStock) || 0,
+          totalStock: 0,
+          availableStock: 0,
           authors: {
             connect: resolvedAuthorIds.map(id => ({ id }))
           },
@@ -106,10 +173,23 @@ export class PhysicalBooksService {
         }
       });
 
+      // 💡 Cada unidad del stock se materializa como un ejemplar individual
+      await this.createCopies(tx, physicalBook, parsedTotal, Array.isArray(copyCodes) ? copyCodes : []);
+      await recalcBookStock(tx, physicalBook.id);
+
+      const withStock = await tx.physicalBook.findUnique({
+        where: { id: physicalBook.id },
+        include: {
+          authors: { select: { id: true, name: true } },
+          categories: { select: { id: true, name: true } },
+          copies: { orderBy: { createdAt: 'asc' } }
+        }
+      });
+
       return {
         status: 'success',
         message: 'Libro físico creado exitosamente',
-        data: { ...physicalBook }
+        data: { ...withStock }
       };
     });
   }
@@ -128,6 +208,8 @@ export class PhysicalBooksService {
         categoryName,
         categoryIds,
         categoryNames,
+        copyCodes,
+        totalStock,
         ...restOfDto
       } = updatePhysicalBookDto;
 
@@ -149,20 +231,32 @@ export class PhysicalBooksService {
         ...(categoryNames ?? [])
       ]);
 
-      const currentDifference = currentBook.totalStock - currentBook.availableStock;
-      const parsedTotalStock = parseInt(restOfDto.totalStock) || currentBook.totalStock;
-      const newAvailableStock = parsedTotalStock - currentDifference;
-
-      if (newAvailableStock < 0) {
-        throw new HttpException('Cantidad incorrecta, resuelve los préstamos del libro primero', HttpStatus.BAD_REQUEST);
-      }
+      const targetTotal = totalStock !== undefined ? parseInt(totalStock) : currentBook.totalStock;
+      const hasCopies = await this.reconcileCopies(
+        tx,
+        currentBook,
+        targetTotal,
+        Array.isArray(copyCodes) ? copyCodes : []
+      );
 
       const updateData: any = {
         ...restOfDto,
-        yearOfPublication: parseInt(restOfDto.yearOfPublication) || undefined,
-        totalStock: parsedTotalStock,
-        availableStock: newAvailableStock
+        yearOfPublication: restOfDto.yearOfPublication !== undefined
+          ? parseInt(restOfDto.yearOfPublication)
+          : currentBook.yearOfPublication,
       };
+
+      if (!hasCopies) {
+        // 💡 Modo legacy: libros sin ejemplares migrados conservan el cálculo previo
+        const currentDifference = currentBook.totalStock - currentBook.availableStock;
+        const parsedTotalStock = parseInt(totalStock) || currentBook.totalStock;
+        const newAvailableStock = parsedTotalStock - currentDifference;
+        if (newAvailableStock < 0) {
+          throw new HttpException('Cantidad incorrecta, resuelve los préstamos del libro primero', HttpStatus.BAD_REQUEST);
+        }
+        updateData.totalStock = parsedTotalStock;
+        updateData.availableStock = newAvailableStock;
+      }
 
       if (authorIds !== undefined || authorId !== undefined || authorNames !== undefined || authorName !== undefined) {
         updateData.authors = {
@@ -176,7 +270,7 @@ export class PhysicalBooksService {
         };
       }
 
-      const physicalBook = await tx.physicalBook.update({
+      let physicalBook = await tx.physicalBook.update({
         where: { id },
         data: updateData,
         include: {
@@ -185,11 +279,118 @@ export class PhysicalBooksService {
         }
       });
 
+      if (hasCopies) {
+        await recalcBookStock(tx, id);
+        physicalBook = await tx.physicalBook.findUnique({
+          where: { id },
+          include: {
+            authors: { select: { id: true, name: true } },
+            categories: { select: { id: true, name: true } }
+          }
+        });
+      }
+
       return {
         status: 'success',
         message: 'Libro físico actualizado exitosamente',
         data: { ...physicalBook }
       };
+    });
+  }
+
+  async findOne(id: string) {
+    const physicalBook = await this.prisma.physicalBook.findUnique({
+      where: { id },
+      include: {
+        authors: { select: { id: true, name: true } },
+        categories: { select: { id: true, name: true } },
+        copies: { orderBy: { createdAt: 'asc' } }
+      }
+    });
+
+    if (!physicalBook) throw new HttpException('Libro físico no encontrado', HttpStatus.NOT_FOUND);
+
+    return { status: 'success', data: physicalBook };
+  }
+
+  // 📦 Gestión de ejemplares individuales
+  async addCopies(id: string, dto: any) {
+    return this.prisma.$transaction(async (tx) => {
+      const book = await tx.physicalBook.findUnique({ where: { id } });
+      if (!book) throw new HttpException('Libro físico no encontrado', HttpStatus.NOT_FOUND);
+
+      const requestedCodes: string[] = Array.isArray(dto.codes) ? dto.codes : [];
+      const quantity = dto.quantity !== undefined ? parseInt(dto.quantity) : requestedCodes.length;
+      if (!quantity || quantity <= 0) {
+        throw new BadRequestException('Debes indicar al menos un ejemplar');
+      }
+
+      await this.createCopies(tx, book, quantity, requestedCodes, {
+        location: dto.location,
+        observations: dto.observations
+      });
+
+      const summary = await recalcBookStock(tx, id);
+      const copies = await tx.bookCopy.findMany({
+        where: { bookId: id },
+        orderBy: { createdAt: 'asc' }
+      });
+
+      return { status: 'success', message: 'Ejemplares agregados', data: { copies, summary } };
+    });
+  }
+
+  async findCopies(id: string) {
+    const book = await this.prisma.physicalBook.findUnique({ where: { id } });
+    if (!book) throw new HttpException('Libro físico no encontrado', HttpStatus.NOT_FOUND);
+
+    const copies = await this.prisma.bookCopy.findMany({
+      where: { bookId: id },
+      orderBy: { createdAt: 'asc' }
+    });
+
+    return { status: 'success', data: copies };
+  }
+
+  async updateCopy(copyId: string, dto: any) {
+    return this.prisma.$transaction(async (tx) => {
+      const copy = await tx.bookCopy.findUnique({ where: { id: copyId } });
+      if (!copy) throw new HttpException('Ejemplar no encontrado', HttpStatus.NOT_FOUND);
+
+      const data: any = {};
+      if (dto.code !== undefined && `${dto.code}`.trim()) data.code = `${dto.code}`.trim();
+      if (dto.status !== undefined) data.status = dto.status;
+      if (dto.location !== undefined) data.location = dto.location;
+      if (dto.observations !== undefined) data.observations = dto.observations;
+
+      let updated;
+      try {
+        updated = await tx.bookCopy.update({ where: { id: copyId }, data });
+      } catch (error: any) {
+        if (error?.code === 'P2002') {
+          throw new HttpException('Ya existe un ejemplar con ese código', HttpStatus.CONFLICT);
+        }
+        throw error;
+      }
+
+      const summary = await recalcBookStock(tx, copy.bookId);
+      return { status: 'success', message: 'Ejemplar actualizado', data: { copy: updated, summary } };
+    });
+  }
+
+  async removeCopy(copyId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const copy = await tx.bookCopy.findUnique({ where: { id: copyId } });
+      if (!copy) throw new HttpException('Ejemplar no encontrado', HttpStatus.NOT_FOUND);
+
+      if (copy.status === CopyStatus.PRESTADO) {
+        throw new BadRequestException('No puedes eliminar un ejemplar que está prestado');
+      }
+
+      await tx.bookCopy.delete({ where: { id: copyId } });
+      const summary = await recalcBookStock(tx, copy.bookId);
+
+      return { status: 'success', message: 'Ejemplar eliminado', data: { summary } };
     });
   }
 

@@ -1,6 +1,6 @@
 import { OperationType } from "@prisma/client";
 import { Transform } from "class-transformer";
-import { IsDefined, IsInt, IsNotEmpty, IsOptional, IsPositive, IsString, MaxLength, MinLength } from "class-validator";
+import { IsArray, IsDefined, IsInt, IsNotEmpty, IsOptional, IsPositive, IsString, MaxLength, MinLength } from "class-validator";
 
 export class EntrieDto {
     @Transform(({ value }: any) => parseInt(value))
@@ -10,6 +10,12 @@ export class EntrieDto {
 
     @IsDefined({ message: 'Debes incluir un Item para dar entradas' })
     bookId: string
+
+    // 🎯 Códigos opcionales para los nuevos ejemplares (si no se envían se autogeneran)
+    @IsOptional()
+    @IsArray({ message: 'Los códigos deben ser un arreglo' })
+    @IsString({ each: true, message: 'Cada código debe ser una cadena de texto' })
+    codes?: string[]
 
 
     @IsString({ message: 'Los nombres deben ser texto' })

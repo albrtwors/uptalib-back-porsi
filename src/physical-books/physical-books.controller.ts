@@ -25,11 +25,40 @@ export class PhysicalBooksController {
     return this.physicalBooksService.findAll(query);
   }
 
+  // 📦 Ejemplares individuales del libro
+  @Get(':id/copies')
+  @Roles(Role.LIBRARIAN, Role.ADMIN)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  findCopies(@Param('id') id: string) {
+    return this.physicalBooksService.findCopies(id);
+  }
+
+  @Post(':id/copies')
+  @Roles(Role.LIBRARIAN, Role.ADMIN)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  addCopies(@Param('id') id: string, @Body() dto: any) {
+    return this.physicalBooksService.addCopies(id, dto);
+  }
+
+  @Patch('copies/:copyId')
+  @Roles(Role.LIBRARIAN, Role.ADMIN)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  updateCopy(@Param('copyId') copyId: string, @Body() dto: any) {
+    return this.physicalBooksService.updateCopy(copyId, dto);
+  }
+
+  @Delete('copies/:copyId')
+  @Roles(Role.LIBRARIAN, Role.ADMIN)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  removeCopy(@Param('copyId') copyId: string) {
+    return this.physicalBooksService.removeCopy(copyId);
+  }
+
   @Get(':id')
   @Roles(Role.LIBRARIAN, Role.ADMIN)
   @UseGuards(JwtAuthGuard, RolesGuard)
   findOne(@Param('id') id: string) {
-    return 'this.physicalBooksService.findOne(+id);'
+    return this.physicalBooksService.findOne(id);
   }
 
   @Patch(':id')

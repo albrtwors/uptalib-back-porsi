@@ -1,12 +1,19 @@
 import { OperationType } from "@prisma/client";
 import { Transform } from "class-transformer";
-import { IsDefined, IsInt, IsNotEmpty, IsOptional, IsPositive, IsString, MaxLength, MinLength } from "class-validator";
+import { IsArray, IsDefined, IsInt, IsNotEmpty, IsOptional, IsPositive, IsString, MaxLength, MinLength } from "class-validator";
 
 export class LoanDto {
     @Transform(({ value }: any) => parseInt(value))
     @IsInt({ message: 'La cantidad debe ser un numero entero' })
     @IsPositive({ message: 'La cantidad debe ser un numero positivo' })
-    quantity: number
+    @IsOptional()
+    quantity?: number
+
+    // 🎯 Ejemplares específicos a prestar (control por copia individual)
+    @IsOptional()
+    @IsArray({ message: 'Los ejemplares deben ser un arreglo' })
+    @IsString({ each: true, message: 'Cada ejemplar debe ser una cadena de texto' })
+    copyIds?: string[]
 
     @IsDefined({ message: 'Debes incluir un Item a prestar' })
     itemId: string

@@ -71,6 +71,52 @@ export class SyncService {
 
   constructor(private readonly prisma: PrismaService) {}
 
+  private static readonly RETRYABLE_CODES = new Set([
+    'P1000',
+    'P1001',
+    'P1002',
+    'P1008',
+    'P1017',
+    'P2024',
+  ]);
+
+  private static readonly RETRYABLE_PATTERN =
+    /connection|closed the connection|timed out fetching|login has been failing|econnreset|etimedout|econnrefused|socket hang up|server conn/i;
+
+  private isTransient(err: unknown): boolean {
+    const error = err as { code?: string; message?: string } | null;
+    if (!error) return false;
+    if (error.code && SyncService.RETRYABLE_CODES.has(error.code)) return true;
+    return SyncService.RETRYABLE_PATTERN.test(String(error.message ?? ''));
+  }
+
+  /**
+   * Reintenta ante errores transitorios de conexión con Postgres. En Vercel el
+   * pool de Prisma queda con conexiones obsoletas tras el idle y la primera
+   * petición falla; reintentar descarta la conexión muerta y abre una nueva.
+   */
+  private async withRetry<T>(
+    label: string,
+    operation: () => Promise<T>,
+    attempts = 3,
+  ): Promise<T> {
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      try {
+        return await operation();
+      } catch (err) {
+        lastError = err;
+        if (attempt === attempts || !this.isTransient(err)) throw err;
+        const delay = 500 * attempt;
+        this.logger.warn(
+          `${label}: transient DB error (attempt ${attempt}/${attempts}), retrying in ${delay}ms`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+    }
+    throw lastError;
+  }
+
   private isNewer(incoming: any, existing: any): boolean {
     if (!incoming || incoming.updatedAt === undefined || incoming.updatedAt === null) {
       return false;
@@ -115,6 +161,10 @@ export class SyncService {
 
   /** Devuelve el snapshot completo del servidor normalizado para sincronización. */
   async exportAll() {
+    return this.withRetry('exportAll', () => this.buildSnapshot());
+  }
+
+  private async buildSnapshot() {
     const [
       categories,
       authors,
@@ -171,6 +221,10 @@ export class SyncService {
 
   /** Fusiona el snapshot del cliente (LWW) y devuelve el estado canónico. */
   async merge(payload: any) {
+    return this.withRetry('merge', () => this.runMerge(payload));
+  }
+
+  private async runMerge(payload: any) {
     const data = payload?.data ?? {};
     const counters: SyncCounters = { created: 0, updated: 0, skipped: 0 };
 
@@ -293,6 +347,10 @@ export class SyncService {
   }
 
   async info() {
+    return this.withRetry('info', () => this.buildInfo());
+  }
+
+  private async buildInfo() {
     const [categories, authors, itemTypes, physicalBooks, items, bookCopies, itemCopies] =
       await Promise.all([
         this.prisma.category.count(),

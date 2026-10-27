@@ -22,3 +22,21 @@ export class CreateUserDto {
 
 
 }
+
+export class CreateUserAdminDto {
+  @IsNotEmpty()
+  @IsString()
+  name: string;
+
+  @IsNotEmpty()
+  @IsEmail()
+  email: string;
+
+  @IsString()
+  @MinLength(6)
+  password: string;
+
+  @IsNotEmpty()
+  @IsEnum(Role)
+  role: Role;
+}

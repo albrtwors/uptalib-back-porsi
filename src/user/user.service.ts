@@ -1,6 +1,6 @@
-import { Injectable, ConflictException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, ConflictException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CreateUserDto } from './dto/user.dto';
+import { CreateUserAdminDto, CreateUserDto } from './dto/user.dto';
 import { MailService } from '../mail/mail.service';
 import { CODE_TTL_MS, generateVerificationCode, hashCode } from '../functions/code/code';
 import * as bcrypt from 'bcrypt';
@@ -23,10 +23,66 @@ export class UsersService {
       ]
     }
 
-    const data = await this.prisma.user.findMany({ where, take, skip })
+    const data = await this.prisma.user.findMany({
+      where,
+      take,
+      skip,
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        isBlocked: true,
+        emailVerified: true,
+      },
+    })
     const totalPages = await this.prisma.user.count({ where })
 
     return { data, totalPages }
+  }
+
+  async createByAdmin(createUserDto: CreateUserAdminDto) {
+    const { email, password, name, role } = createUserDto;
+
+    const existingUser = await this.prisma.user.findFirst({
+      where: {
+        OR: [
+          { email: email },
+          { name: name }
+        ]
+      }
+    });
+
+    if (existingUser) {
+      throw new ConflictException('Las credenciales están registradas');
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    const user = await this.prisma.user.create({
+      data: {
+        email,
+        name,
+        password: hashedPassword,
+        role,
+        emailVerified: true,
+      },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        isBlocked: true,
+        emailVerified: true,
+      },
+    });
+
+    return {
+      status: 'success',
+      message: 'Usuario creado correctamente',
+      user,
+    };
   }
 
   async blockUser(id: number) {
@@ -92,8 +148,12 @@ export class UsersService {
 
 
   async updateRole(id: number, newRole: Role) { // Cambiamos 'any' por 'Role'
+    if (!Object.values(Role).includes(newRole)) {
+      throw new BadRequestException('Rol inválido');
+    }
+
     try {
-      return await this.prisma.user.update({
+      const user = await this.prisma.user.update({
         where: { id },
         data: { role: newRole },
         select: {
@@ -102,6 +162,12 @@ export class UsersService {
           role: true,
         },
       });
+
+      return {
+        status: 'success',
+        message: 'Rol actualizado correctamente',
+        user,
+      };
     } catch (error) {
       throw new NotFoundException(`No se encontró el usuario con ID ${id}`);
     }

@@ -1,6 +1,6 @@
 import { Injectable, ConflictException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { normalizePnfName, resolvePnfIds } from '../utils/pnf';
+import { normalizePnfFilter, resolvePnfIds } from '../utils/pnf';
 
 interface BookCreateInput {
   title: string;
@@ -47,7 +47,7 @@ export class BookService {
     const andConditions: any[] = [];
 
     // 1️⃣ Filtro por PNF usando el nombre persistido en la tabla Pnf
-    const normalizedPnf = normalizePnfName(pnf);
+    const normalizedPnf = normalizePnfFilter(pnf);
     if (normalizedPnf && normalizedPnf.trim() !== "") {
       andConditions.push({
         pnfs: {

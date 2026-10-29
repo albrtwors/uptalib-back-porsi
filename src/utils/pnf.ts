@@ -13,6 +13,15 @@ export function normalizePnfName(value: unknown): string {
     .toUpperCase();
 }
 
+/**
+ * Normaliza el valor del filtro de PNF de las listas. Los comodines que envían
+ * los buscadores de la interfaz ('', 'TODOS', 'undefined', 'null') no filtran nada.
+ */
+export function normalizePnfFilter(value: unknown): string {
+  const name = normalizePnfName(value);
+  return !name || ['TODOS', 'UNDEFINED', 'NULL'].includes(name) ? '' : name;
+}
+
 /** Busca un PNF por nombre (case-insensitive) o lo crea si no existe. */
 export async function ensurePnf(tx: any, value: unknown) {
   const name = normalizePnfName(value);

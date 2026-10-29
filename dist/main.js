@@ -1740,7 +1740,7 @@ let BookService = class BookService {
         const pnf = query.pnf;
         const authorsParam = query.authors;
         const andConditions = [];
-        const normalizedPnf = (0, pnf_1.normalizePnfName)(pnf);
+        const normalizedPnf = (0, pnf_1.normalizePnfFilter)(pnf);
         if (normalizedPnf && normalizedPnf.trim() !== "") {
             andConditions.push({
                 pnfs: {
@@ -1955,6 +1955,7 @@ exports.BookService = BookService = __decorate([
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.normalizePnfName = normalizePnfName;
+exports.normalizePnfFilter = normalizePnfFilter;
 exports.ensurePnf = ensurePnf;
 exports.resolvePnfIds = resolvePnfIds;
 const common_1 = __webpack_require__(3);
@@ -1965,6 +1966,10 @@ function normalizePnfName(value) {
         .replace(/\s+/g, ' ')
         .trim()
         .toUpperCase();
+}
+function normalizePnfFilter(value) {
+    const name = normalizePnfName(value);
+    return !name || ['TODOS', 'UNDEFINED', 'NULL'].includes(name) ? '' : name;
 }
 async function ensurePnf(tx, value) {
     const name = normalizePnfName(value);
@@ -3719,14 +3724,12 @@ let PhysicalBooksService = class PhysicalBooksService {
             };
             where.AND ? where.AND.push(authorFilter) : where.AND = [authorFilter];
         }
-        const normalizedPnf = (0, pnf_1.normalizePnfName)(query.pnf);
-        if (normalizedPnf && normalizedPnf != 'TODOS') {
+        const normalizedPnf = (0, pnf_1.normalizePnfFilter)(query.pnf);
+        if (normalizedPnf) {
             const pnfFilter = {
                 pnfs: {
                     some: {
-                        pnf: {
-                            name: { equals: normalizedPnf, mode: 'insensitive' }
-                        }
+                        name: { equals: normalizedPnf, mode: 'insensitive' }
                     }
                 }
             };
@@ -4810,8 +4813,15 @@ let PhysicalBookOperationService = class PhysicalBookOperationService {
         const limit = parseInt(query.limit) || 10;
         const page = parseInt(query.page) || 1;
         const skip = (page - 1) * limit;
-        if (query.search != '') {
+        if (query.search) {
             QUERY.where = { OR: [{ book: { title: { contains: query.search, mode: 'insensitive' } } }] };
+        }
+        else {
+            QUERY.where = {};
+        }
+        const operationType = `${query.type ?? ''}`.trim().toUpperCase();
+        if (operationType && client_1.OperationType[operationType]) {
+            QUERY.where.type = operationType;
         }
         const totalPages = await this.prisma.bookOperation.count({
             where: QUERY.where
@@ -4823,7 +4833,8 @@ let PhysicalBookOperationService = class PhysicalBookOperationService {
                 book: {
                     select: {
                         title: true,
-                        isbn: true
+                        isbn: true,
+                        code: true
                     }
                 },
                 copy: {
@@ -4918,7 +4929,8 @@ let PhysicalBookOperationService = class PhysicalBookOperationService {
             ...QUERY, where: { ...QUERY.where, wasSettled: false, type: 'PRESTAMO' }, orderBy: { createdAt: 'desc' }, include: {
                 book: {
                     select: {
-                        title: true
+                        title: true,
+                        code: true
                     }
                 },
                 copy: {

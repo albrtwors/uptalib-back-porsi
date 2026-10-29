@@ -1,6 +1,10 @@
 -- PNF pasa de enum Postgres a tabla creable desde la aplicación.
 -- Los valores históricos del enum se conservan para no perder datos.
 
+-- El enum "Pnf" (y su tipo array "_Pnf") ocupa el nombre que necesita la nueva tabla,
+-- así que se renombra primero; las columnas que lo usan siguen apuntando al tipo renombrado.
+ALTER TYPE "Pnf" RENAME TO "PnfLegacyEnum";
+
 -- CreateTable
 CREATE TABLE "Pnf" (
     "id" TEXT NOT NULL,
@@ -78,4 +82,4 @@ ALTER TABLE "PhysicalBook" ADD COLUMN "code" TEXT;
 CREATE UNIQUE INDEX "PhysicalBook_code_key" ON "PhysicalBook"("code");
 
 -- DropEnum
-DROP TYPE "Pnf";
+DROP TYPE "PnfLegacyEnum";

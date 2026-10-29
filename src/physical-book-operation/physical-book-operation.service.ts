@@ -1,5 +1,5 @@
 import { BadRequestException, HttpException, HttpStatus, Injectable } from '@nestjs/common';
-import { CopyStatus } from '@prisma/client';
+import { CopyStatus, OperationType } from '@prisma/client';
 import { CreatePhysicalBookOperationDto } from './dto/create-physical-book-operation.dto';
 import { UpdatePhysicalBookOperationDto } from './dto/update-physical-book-operation.dto';
 import { PrismaService } from 'prisma/prisma.service';
@@ -22,8 +22,16 @@ export class PhysicalBookOperationService {
     const page = parseInt(query.page) || 1
     const skip = (page - 1) * limit
 
-    if (query.search != '') {
+    if (query.search) {
       QUERY.where = { OR: [{ book: { title: { contains: query.search, mode: 'insensitive' } } }] }
+    } else {
+      QUERY.where = {}
+    }
+
+    // 💡 Filtro por tipo de operación (llega vacío cuando no se selecciona ninguno)
+    const operationType = `${query.type ?? ''}`.trim().toUpperCase()
+    if (operationType && (OperationType as any)[operationType]) {
+      QUERY.where.type = operationType
     }
 
     const totalPages = await this.prisma.bookOperation.count({
@@ -37,7 +45,8 @@ export class PhysicalBookOperationService {
         book: {
           select: {
             title: true,
-            isbn: true
+            isbn: true,
+            code: true
           }
 
         },
@@ -159,7 +168,8 @@ export class PhysicalBookOperationService {
       ...QUERY, where: { ...QUERY.where, wasSettled: false, type: 'PRESTAMO' }, orderBy: { createdAt: 'desc' }, include: {
         book: {
           select: {
-            title: true
+            title: true,
+            code: true
           }
         },
         copy: {

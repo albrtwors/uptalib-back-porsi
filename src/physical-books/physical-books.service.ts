@@ -2,7 +2,7 @@ import { BadRequestException, ConflictException, HttpException, HttpStatus, Inje
 import { CopyStatus } from '@prisma/client';
 import { PrismaService } from 'prisma/prisma.service';
 import { CopyExtra, createBookCopies, recalcBookStock } from '../utils/copies';
-import { normalizePnfName, resolvePnfIds } from '../utils/pnf';
+import { normalizePnfFilter, resolvePnfIds } from '../utils/pnf';
 
 @Injectable()
 export class PhysicalBooksService {
@@ -517,14 +517,13 @@ export class PhysicalBooksService {
       where.AND ? where.AND.push(authorFilter) : where.AND = [authorFilter];
     }
 
-    const normalizedPnf = normalizePnfName(query.pnf);
-    if (normalizedPnf && normalizedPnf != 'TODOS') {
+    const normalizedPnf = normalizePnfFilter(query.pnf);
+    if (normalizedPnf) {
+      // 💡 PhysicalBook.pnfs es un m:n directo con Pnf, así que el nombre vive en el propio nodo
       const pnfFilter = {
         pnfs: {
           some: {
-            pnf: {
-              name: { equals: normalizedPnf, mode: 'insensitive' }
-            }
+            name: { equals: normalizedPnf, mode: 'insensitive' }
           }
         }
       };

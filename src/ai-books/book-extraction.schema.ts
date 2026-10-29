@@ -1,10 +1,12 @@
 import { z } from 'zod';
+import { normalizePnfName } from '../utils/pnf';
 
-const PNF_ENUM = z.enum([
-    "GENERAL", "INFORMATICA", "ELECTRONICA", "MANTENIMIENTO",
-    "CONTADURIA", "ADMINISTRACION", "ELECTRICIDAD",
-    "MECANICA", "INSTRUMENTACION", "TELECOMUNICACIONES"
-]);
+const PNF_ENUM = z.string().min(3).describe('El Programa Nacional de Formación asociado.');
+
+const PNF_LIST = z.preprocess(
+    (val) => (val === null || val === undefined ? [] : Array.isArray(val) ? val.map((item: any) => normalizePnfName(item)).filter(Boolean) : val),
+    z.array(PNF_ENUM)
+);
 
 export const BookExtractionSchema = z.object({
     message: z.string().describe("Respuesta conversacional amigable para el usuario."),
@@ -16,10 +18,7 @@ export const BookExtractionSchema = z.object({
         routeimg: z.string().nullable().describe("La URL o ruta de la portada si se menciona. Si no, null."),
 
         // 💡 Preprocesador blindado: Si viene null o vacío, lo transforma en un array válido []
-        pnfs: z.preprocess(
-            (val) => (val === null || val === undefined ? [] : val),
-            z.array(PNF_ENUM)
-        ).describe("Lista de PNFs válidos."),
+        pnfs: PNF_LIST.describe("Lista de PNFs válidos."),
 
         authors: z.preprocess(
             (val) => (val === null || val === undefined ? [] : val),
@@ -41,10 +40,7 @@ export const BulkBookActionSchema = z.object({
             routeimg: z.string().nullable().describe("Ruta de la imagen de portada."),
 
             // Blindamos los sub-arreglos internos de cada operación
-            pnfs: z.preprocess(
-                (val) => (val === null || val === undefined ? [] : val),
-                z.array(PNF_ENUM)
-            ).describe("Lista de PNFs asociados al libro. Si no hay ninguno, devolver array vacío []."),
+            pnfs: PNF_LIST.describe("Lista de PNFs asociados al libro. Si no hay ninguno, devolver array vacío []."),
 
             authors: z.preprocess(
                 (val) => (val === null || val === undefined ? [] : val),

@@ -38,7 +38,39 @@ export class BackupService {
                 await this.prisma.operation.findMany(),
 
             PhysicalBook:
-                await this.prisma.physicalBook.findMany(),
+                await this.prisma.physicalBook.findMany({ include: { pnfs: true } }),
+
+            BookCopy:
+                await this.prisma.bookCopy.findMany(),
+
+            ItemCopy:
+                await this.prisma.itemCopy.findMany(),
+
+            BookPnf:
+                await this.prisma.bookPnf.findMany(),
+
+            Pnf:
+                await this.prisma.pnf.findMany(),
+
+            _PhysicalBookToPnf:
+                await this.prisma.$queryRawUnsafe(
+                    `SELECT * FROM "_PhysicalBookToPnf"`
+                ),
+
+            _PhysicalBookToAuthor:
+                await this.prisma.$queryRawUnsafe(
+                    `SELECT * FROM "_PhysicalBookToAuthor"`
+                ),
+
+            _BookToAuthor:
+                await this.prisma.$queryRawUnsafe(
+                    `SELECT * FROM "_BookToAuthor"`
+                ),
+
+            _ItemToAuthor:
+                await this.prisma.$queryRawUnsafe(
+                    `SELECT * FROM "_ItemToAuthor"`
+                ),
 
             SavedBook:
                 await this.prisma.savedBook.findMany(),

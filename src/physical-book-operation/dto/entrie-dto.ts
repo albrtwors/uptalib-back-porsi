@@ -17,6 +17,15 @@ export class EntrieDto {
     @IsString({ each: true, message: 'Cada código debe ser una cadena de texto' })
     codes?: string[]
 
+    // 🎯 Rango opcional para generar los códigos de los nuevos ejemplares
+    @IsOptional()
+    @IsString({ message: 'El código inicial del rango debe ser una cadena de texto' })
+    codeFrom?: string
+
+    @IsOptional()
+    @IsString({ message: 'El código final del rango debe ser una cadena de texto' })
+    codeTo?: string
+
 
     @IsString({ message: 'Los nombres deben ser texto' })
     @MinLength(3, { message: 'Los nombres deben tener minimo 3 caracteres' })

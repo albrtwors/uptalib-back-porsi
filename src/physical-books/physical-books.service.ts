@@ -1,7 +1,8 @@
-import { BadRequestException, HttpException, HttpStatus, Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import { CopyStatus } from '@prisma/client';
 import { PrismaService } from 'prisma/prisma.service';
-import { createBookCopies, recalcBookStock } from '../utils/copies';
+import { CopyExtra, createBookCopies, recalcBookStock } from '../utils/copies';
+import { normalizePnfName, resolvePnfIds } from '../utils/pnf';
 
 @Injectable()
 export class PhysicalBooksService {
@@ -63,10 +64,10 @@ export class PhysicalBooksService {
    */
   private async createCopies(
     tx: any,
-    book: { id: string; isbn?: string | null },
+    book: { id: string; isbn?: string | null; code?: string | null },
     quantity: number,
     requestedCodes: string[] = [],
-    extra: { location?: string | null; observations?: string | null } = {}
+    extra: CopyExtra = {}
   ) {
     return createBookCopies(tx, book, quantity, requestedCodes, extra);
   }
@@ -77,9 +78,10 @@ export class PhysicalBooksService {
    */
   private async reconcileCopies(
     tx: any,
-    book: { id: string; isbn?: string | null },
+    book: { id: string; isbn?: string | null; code?: string | null },
     targetTotal: number,
-    requestedCodes: string[] = []
+    requestedCodes: string[] = [],
+    extra: CopyExtra = {}
   ): Promise<boolean> {
     const copies = await tx.bookCopy.findMany({
       where: { bookId: book.id },
@@ -93,7 +95,7 @@ export class PhysicalBooksService {
     const diff = targetTotal - active.length;
 
     if (diff > 0) {
-      await this.createCopies(tx, book, diff, requestedCodes);
+      await this.createCopies(tx, book, diff, requestedCodes, extra);
     } else if (diff < 0) {
       const removable = active.filter((c: any) => c.status !== CopyStatus.PRESTADO);
       if (Math.abs(diff) > removable.length) {
@@ -129,7 +131,15 @@ export class PhysicalBooksService {
         categoryName,
         categoryIds = [],
         categoryNames = [],
+        pnf,
+        pnfId,
+        pnfIds = [],
+        pnfNames = [],
+        pnfs = [],
+        code,
         copyCodes = [],
+        codeFrom,
+        codeTo,
         totalStock,
         ...restOfDto
       } = createPhysicalBookDto;
@@ -152,29 +162,59 @@ export class PhysicalBooksService {
         ...categoryNames
       ]);
 
-      const parsedTotal = parseInt(totalStock) || 0;
+      // 💡 Resolución de múltiples PNFs (se crean por nombre si hace falta)
+      let resolvedPnfIds = await resolvePnfIds(
+        tx,
+        [pnfId, ...(Array.isArray(pnfIds) ? pnfIds : [])],
+        [pnf, ...(Array.isArray(pnfs) ? pnfs : []), ...(Array.isArray(pnfNames) ? pnfNames : [])]
+      );
+      if (resolvedPnfIds.length === 0) {
+        resolvedPnfIds = await resolvePnfIds(tx, [], ['GENERAL']);
+      }
 
-      const physicalBook = await tx.physicalBook.create({
-        data: {
-          ...restOfDto,
-          yearOfPublication: parseInt(restOfDto.yearOfPublication) || undefined,
-          totalStock: 0,
-          availableStock: 0,
-          authors: {
-            connect: resolvedAuthorIds.map(id => ({ id }))
+      const parsedTotal = parseInt(totalStock) || 0;
+      const cleanCode = `${code ?? ''}`.trim() || null;
+
+      let physicalBook: any;
+      try {
+        physicalBook = await tx.physicalBook.create({
+          data: {
+            ...restOfDto,
+            code: cleanCode,
+            yearOfPublication: parseInt(restOfDto.yearOfPublication) || undefined,
+            totalStock: 0,
+            availableStock: 0,
+            authors: {
+              connect: resolvedAuthorIds.map(id => ({ id }))
+            },
+            categories: {
+              connect: resolvedCategoryIds.map(id => ({ id }))
+            },
+            pnfs: {
+              connect: resolvedPnfIds.map(id => ({ id }))
+            }
           },
-          categories: {
-            connect: resolvedCategoryIds.map(id => ({ id }))
+          include: {
+            authors: { select: { id: true, name: true } },
+            categories: { select: { id: true, name: true } },
+            pnfs: true
           }
-        },
-        include: {
-          authors: { select: { id: true, name: true } },
-          categories: { select: { id: true, name: true } }
+        });
+      } catch (error: any) {
+        if (error?.code === 'P2002') {
+          throw new ConflictException('Ya existe un libro físico con ese código');
         }
-      });
+        throw error;
+      }
 
       // 💡 Cada unidad del stock se materializa como un ejemplar individual
-      await this.createCopies(tx, physicalBook, parsedTotal, Array.isArray(copyCodes) ? copyCodes : []);
+      await this.createCopies(
+        tx,
+        physicalBook,
+        parsedTotal,
+        Array.isArray(copyCodes) ? copyCodes : [],
+        { codeFrom, codeTo }
+      );
       await recalcBookStock(tx, physicalBook.id);
 
       const withStock = await tx.physicalBook.findUnique({
@@ -182,6 +222,7 @@ export class PhysicalBooksService {
         include: {
           authors: { select: { id: true, name: true } },
           categories: { select: { id: true, name: true } },
+          pnfs: true,
           copies: { orderBy: { createdAt: 'asc' } }
         }
       });
@@ -208,7 +249,15 @@ export class PhysicalBooksService {
         categoryName,
         categoryIds,
         categoryNames,
+        pnf,
+        pnfId,
+        pnfIds,
+        pnfNames,
+        pnfs,
+        code,
         copyCodes,
+        codeFrom,
+        codeTo,
         totalStock,
         ...restOfDto
       } = updatePhysicalBookDto;
@@ -234,9 +283,10 @@ export class PhysicalBooksService {
       const targetTotal = totalStock !== undefined ? parseInt(totalStock) : currentBook.totalStock;
       const hasCopies = await this.reconcileCopies(
         tx,
-        currentBook,
+        { ...currentBook, code: code !== undefined ? (`${code ?? ''}`.trim() || null) : currentBook.code },
         targetTotal,
-        Array.isArray(copyCodes) ? copyCodes : []
+        Array.isArray(copyCodes) ? copyCodes : [],
+        { codeFrom, codeTo }
       );
 
       const updateData: any = {
@@ -245,6 +295,26 @@ export class PhysicalBooksService {
           ? parseInt(restOfDto.yearOfPublication)
           : currentBook.yearOfPublication,
       };
+
+      if (code !== undefined) {
+        updateData.code = `${code ?? ''}`.trim() || null;
+      }
+
+      const pnfFieldsProvided =
+        pnf !== undefined ||
+        pnfId !== undefined ||
+        pnfIds !== undefined ||
+        pnfNames !== undefined ||
+        pnfs !== undefined;
+
+      if (pnfFieldsProvided) {
+        const resolvedPnfIds = await resolvePnfIds(
+          tx,
+          [pnfId, ...(Array.isArray(pnfIds) ? pnfIds : [])],
+          [pnf, ...(Array.isArray(pnfs) ? pnfs : []), ...(Array.isArray(pnfNames) ? pnfNames : [])]
+        );
+        updateData.pnfs = { set: resolvedPnfIds.map(id => ({ id })) };
+      }
 
       if (!hasCopies) {
         // 💡 Modo legacy: libros sin ejemplares migrados conservan el cálculo previo
@@ -270,14 +340,23 @@ export class PhysicalBooksService {
         };
       }
 
-      let physicalBook = await tx.physicalBook.update({
-        where: { id },
-        data: updateData,
-        include: {
-          authors: { select: { id: true, name: true } },
-          categories: { select: { id: true, name: true } }
+      let physicalBook: any;
+      try {
+        physicalBook = await tx.physicalBook.update({
+          where: { id },
+          data: updateData,
+          include: {
+            authors: { select: { id: true, name: true } },
+            categories: { select: { id: true, name: true } },
+            pnfs: true
+          }
+        });
+      } catch (error: any) {
+        if (error?.code === 'P2002') {
+          throw new ConflictException('Ya existe un libro físico con ese código');
         }
-      });
+        throw error;
+      }
 
       if (hasCopies) {
         await recalcBookStock(tx, id);
@@ -285,7 +364,8 @@ export class PhysicalBooksService {
           where: { id },
           include: {
             authors: { select: { id: true, name: true } },
-            categories: { select: { id: true, name: true } }
+            categories: { select: { id: true, name: true } },
+            pnfs: true
           }
         });
       }
@@ -299,14 +379,15 @@ export class PhysicalBooksService {
   }
 
   async findOne(id: string) {
-    const physicalBook = await this.prisma.physicalBook.findUnique({
-      where: { id },
-      include: {
-        authors: { select: { id: true, name: true } },
-        categories: { select: { id: true, name: true } },
-        copies: { orderBy: { createdAt: 'asc' } }
-      }
-    });
+      const physicalBook = await this.prisma.physicalBook.findUnique({
+        where: { id },
+        include: {
+          authors: { select: { id: true, name: true } },
+          categories: { select: { id: true, name: true } },
+          pnfs: true,
+          copies: { orderBy: { createdAt: 'asc' } }
+        }
+      });
 
     if (!physicalBook) throw new HttpException('Libro físico no encontrado', HttpStatus.NOT_FOUND);
 
@@ -327,7 +408,9 @@ export class PhysicalBooksService {
 
       await this.createCopies(tx, book, quantity, requestedCodes, {
         location: dto.location,
-        observations: dto.observations
+        observations: dto.observations,
+        codeFrom: dto.codeFrom,
+        codeTo: dto.codeTo
       });
 
       const summary = await recalcBookStock(tx, id);
@@ -401,7 +484,6 @@ export class PhysicalBooksService {
     const search = query.search;
     const where: any = {};
 
-    query.pnf = query.pnf == 'undefined' || query.pnf == '' ? 'todos' : query.pnf;
     query.genre = query.genre == 'undefined' ? '' : query.genre;
 
     if (search) {
@@ -435,8 +517,17 @@ export class PhysicalBooksService {
       where.AND ? where.AND.push(authorFilter) : where.AND = [authorFilter];
     }
 
-    if (query.pnf != 'todos') {
-      const pnfFilter = { pnf: query.pnf };
+    const normalizedPnf = normalizePnfName(query.pnf);
+    if (normalizedPnf && normalizedPnf != 'TODOS') {
+      const pnfFilter = {
+        pnfs: {
+          some: {
+            pnf: {
+              name: { equals: normalizedPnf, mode: 'insensitive' }
+            }
+          }
+        }
+      };
       where.AND ? where.AND.push(pnfFilter) : where.AND = [pnfFilter];
     }
 
@@ -444,7 +535,8 @@ export class PhysicalBooksService {
     const data = await this.prisma.physicalBook.findMany({
       where, take, skip, include: {
         authors: { select: { id: true, name: true } },
-        categories: { select: { id: true, name: true } }
+        categories: { select: { id: true, name: true } },
+        pnfs: true
       },
       orderBy: { createdAt: 'desc' }
     });

@@ -20,10 +20,11 @@ const SCALARS: Record<string, string[]> = {
   category: ['name'],
   author: ['name'],
   itemType: ['name'],
+  pnf: ['name'],
   physicalBook: [
+    'code',
     'isbn',
     'title',
-    'pnf',
     'yearOfPublication',
     'editorial',
     'totalStock',
@@ -170,6 +171,7 @@ export class SyncService {
       authors,
       itemTypes,
       physicalBooks,
+      pnfs,
       bookCopies,
       bookOperations,
       items,
@@ -180,8 +182,13 @@ export class SyncService {
       this.prisma.author.findMany(),
       this.prisma.itemType.findMany(),
       this.prisma.physicalBook.findMany({
-        include: { authors: { select: { id: true } }, categories: { select: { id: true } } },
+        include: {
+          authors: { select: { id: true } },
+          categories: { select: { id: true } },
+          pnfs: { select: { id: true } },
+        },
       }),
+      this.prisma.pnf.findMany(),
       this.prisma.bookCopy.findMany(),
       this.prisma.bookOperation.findMany(),
       this.prisma.item.findMany({
@@ -201,8 +208,10 @@ export class SyncService {
           ...b,
           authorIds: b.authors.map((a) => a.id),
           categoryIds: b.categories.map((c) => c.id),
+          pnfIds: b.pnfs.map((p) => p.id),
           authors: undefined,
           categories: undefined,
+          pnfs: undefined,
         })),
         bookCopies,
         bookOperations,
@@ -233,6 +242,7 @@ export class SyncService {
         await this.upsertScalars(tx, 'category', data.categories ?? [], counters);
         await this.upsertScalars(tx, 'author', data.authors ?? [], counters);
         await this.upsertScalars(tx, 'itemType', data.itemTypes ?? [], counters);
+        await this.upsertScalars(tx, 'pnf', data.pnfs ?? [], counters);
 
         const authorIds = new Set(
           (await tx.author.findMany({ select: { id: true } })).map((a: any) => a.id),
@@ -249,12 +259,28 @@ export class SyncService {
           if (!row || typeof row.id !== 'string') continue;
           const existing = await tx.physicalBook.findUnique({ where: { id: row.id } });
           const base = this.pick('physicalBook', row);
+          const incomingPnfIds = Array.isArray(row.pnfIds)
+            ? row.pnfIds.filter((id: any) => typeof id === 'string')
+            : [];
+
           if (!existing) {
             await tx.physicalBook.create({ data: base as any });
             counters.created += 1;
+            if (incomingPnfIds.length > 0) {
+              await tx.physicalBook.update({
+                where: { id: row.id },
+                data: { pnfs: { set: incomingPnfIds.map((id: string) => ({ id })) } },
+              });
+            }
           } else if (this.isNewer(row, existing)) {
             await tx.physicalBook.update({ where: { id: row.id }, data: this.pick('physicalBook', row, false) });
             counters.updated += 1;
+            if (incomingPnfIds.length > 0) {
+              await tx.physicalBook.update({
+                where: { id: row.id },
+                data: { pnfs: { set: incomingPnfIds.map((id: string) => ({ id })) } },
+              });
+            }
           } else {
             counters.skipped += 1;
             continue;

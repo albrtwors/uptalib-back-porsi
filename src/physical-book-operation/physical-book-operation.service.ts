@@ -115,7 +115,10 @@ export class PhysicalBookOperationService {
       if (!book) throw new HttpException('Libro físico no encontrado', HttpStatus.NOT_FOUND);
 
       // 🎯 Cada entrada materializa nuevos ejemplares individuales
-      await createBookCopies(tx, book, entriesDto.quantity, Array.isArray(entriesDto.codes) ? entriesDto.codes : []);
+      await createBookCopies(tx, book, entriesDto.quantity, Array.isArray(entriesDto.codes) ? entriesDto.codes : [], {
+        codeFrom: entriesDto.codeFrom,
+        codeTo: entriesDto.codeTo
+      });
       await recalcBookStock(tx, entriesDto.bookId);
 
       await tx.bookOperation.create({

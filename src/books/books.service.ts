@@ -1,5 +1,6 @@
 import { Injectable, ConflictException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { normalizePnfName, resolvePnfIds } from '../utils/pnf';
 
 interface BookCreateInput {
   title: string;
@@ -27,7 +28,7 @@ export class BookService {
     return await this.prisma.book.findUnique({
       where: { id },
       include: {
-        pnfs: true,
+        pnfs: { include: { pnf: true } },
         authors: true
       }
     });
@@ -45,12 +46,15 @@ export class BookService {
     // 💡 Creamos un arreglo de condiciones explícitas para el AND
     const andConditions: any[] = [];
 
-    // 1️⃣ Filtro por PNF estricto (Aseguramos mayúsculas por si el enum es estricto en la BD)
-    if (pnf && pnf.trim() !== "") {
+    // 1️⃣ Filtro por PNF usando el nombre persistido en la tabla Pnf
+    const normalizedPnf = normalizePnfName(pnf);
+    if (normalizedPnf && normalizedPnf.trim() !== "") {
       andConditions.push({
         pnfs: {
           some: {
-            pnf: pnf.trim().toUpperCase() // 👈 Limpieza y estandarización a mayúsculas
+            pnf: {
+              name: { equals: normalizedPnf, mode: 'insensitive' }
+            }
           }
         }
       });
@@ -101,7 +105,7 @@ export class BookService {
       skip,
       where,
       include: {
-        pnfs: true,
+        pnfs: { include: { pnf: true } },
         authors: true
       },
       orderBy: { id: 'desc' }
@@ -113,6 +117,8 @@ export class BookService {
   async create(data: BookCreateInput, req: any) {
     const { title, description, routepdf, routeimg, pnfs = [], authorIds = [] } = data;
 
+    const resolvedPnfIds = await resolvePnfIds(this.prisma, [], pnfs);
+
     const book = await this.prisma.book.create({
       data: {
         title,
@@ -121,12 +127,15 @@ export class BookService {
         routeimg,
         authors: {
           connect: authorIds.map(id => ({ id }))
-        },
-        pnfs: {
-          create: pnfs.map(pnfItem => ({ pnf: pnfItem as any }))
         }
       }
     });
+
+    if (resolvedPnfIds.length > 0) {
+      await this.prisma.bookPnf.createMany({
+        data: resolvedPnfIds.map((pnfId) => ({ bookId: book.id, pnfId }))
+      });
+    }
 
     await this.prisma.operation.create({
       data: {
@@ -179,11 +188,14 @@ export class BookService {
       };
     }
 
-    if (pnfs) {
+    if (pnfs !== undefined) {
+      const resolvedPnfIds = await resolvePnfIds(this.prisma, [], pnfs);
       await this.prisma.bookPnf.deleteMany({ where: { bookId: id } });
-      updateData.pnfs = {
-        create: pnfs.map(pnfItem => ({ pnf: pnfItem as any }))
-      };
+      if (resolvedPnfIds.length > 0) {
+        await this.prisma.bookPnf.createMany({
+          data: resolvedPnfIds.map((pnfId) => ({ bookId: id, pnfId }))
+        });
+      }
     }
 
     await this.prisma.operation.create({
@@ -198,7 +210,7 @@ export class BookService {
       book: await this.prisma.book.update({
         where: { id },
         data: updateData,
-        include: { pnfs: true, authors: true }
+        include: { pnfs: { include: { pnf: true } }, authors: true }
       }),
       message: 'Libro editado'
     };
@@ -262,7 +274,7 @@ export class BookService {
       skip,
       include: {
         book: {
-          include: { pnfs: true, authors: true }
+          include: { pnfs: { include: { pnf: true } }, authors: true }
         }
       },
     });

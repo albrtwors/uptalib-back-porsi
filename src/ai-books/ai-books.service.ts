@@ -38,12 +38,15 @@ export class AiBooksService implements OnModuleInit {
     }
 
     async processBookIntent(userInput: string, currentBookData?: any): Promise<any> {
+        const pnfs = await this.prisma.pnf.findMany({ orderBy: { name: 'asc' } });
+        const pnfList = pnfs.map((p) => p.name).join(', ');
+
         const systemPrompt = `
       Eres un asistente experto de la Biblioteca Raúl Castillo en la UPT de Aragua.
       Analiza el mensaje del usuario y rellena los datos correspondientes.
       
       Reglas:
-      1. Extrae los PNFs válidos: GENERAL, INFORMATICA, ELECTRONICA, MANTENIMIENTO, CONTADURIA, ADMINISTRACION, ELECTRICIDAD, MECANICA, INSTRUMENTACION, TELECOMUNICACIONES.
+      1. Extrae los PNFs registrados en la biblioteca: ${pnfList}. Si el usuario menciona uno que no está en la lista, devuélvelo normalizado en mayúsculas sin espacios extra (se creará al guardar).
       2. Extrae los nombres de los autores en 'authors'.
       3. Si el usuario no menciona un campo de texto, ponlo como null. Si no menciona arreglos, ponlos como [].
     `;

@@ -1,6 +1,5 @@
 import { Transform } from "class-transformer";
 import { IsArray, IsDefined, IsInt, IsOptional, IsPositive, IsString, MinLength } from "class-validator";
-import { Pnf } from "@prisma/client";
 
 export class CreatePhysicalBookDto {
 
@@ -11,6 +10,26 @@ export class CreatePhysicalBookDto {
     @IsOptional()
     @IsString({ message: 'El código ISBN debe ser cadena de texto' })
     isbn?: string;
+
+    // 💡 Código propio del libro, independiente del ISBN. Base para los ejemplares.
+    @IsOptional()
+    @IsString({ message: 'El código del libro debe ser cadena de texto' })
+    code?: string;
+
+    // 💡 Códigos opcionales para los nuevos ejemplares
+    @IsOptional()
+    @IsArray({ message: 'Los códigos de ejemplar deben ser un arreglo' })
+    @IsString({ each: true, message: 'Cada código de ejemplar debe ser una cadena de texto' })
+    copyCodes?: string[];
+
+    // 💡 Rango opcional para generar los códigos de los ejemplares
+    @IsOptional()
+    @IsString({ message: 'El código inicial debe ser cadena de texto' })
+    codeFrom?: string;
+
+    @IsOptional()
+    @IsString({ message: 'El código final debe ser cadena de texto' })
+    codeTo?: string;
 
     @Transform(({ value }: any) => parseInt(value))
     @IsInt({ message: 'El año de publicación debe ser un número entero' })
@@ -63,9 +82,32 @@ export class CreatePhysicalBookDto {
     @IsString({ message: 'El ID de la categoría debe ser una cadena de texto' })
     categoryId?: string;
 
-    @IsString()
-    @IsDefined({ message: 'Debes incluir un PNF' })
-    pnf: Pnf;
+    // 💡 PNFs por id existente
+    @IsOptional()
+    @IsArray({ message: 'Los PNFs deben ser un arreglo' })
+    @IsString({ each: true, message: 'Cada ID de PNF debe ser una cadena de texto' })
+    pnfIds?: string[];
+
+    // 💡 PNFs por nombre (se crean si no existen)
+    @IsOptional()
+    @IsArray({ message: 'Los PNFs deben ser un arreglo' })
+    @IsString({ each: true, message: 'Cada nombre de PNF debe ser una cadena de texto' })
+    pnfNames?: string[];
+
+    // 💡 Compatibilidad hacia atrás con el PNF único
+    @IsOptional()
+    @IsString({ message: 'El PNF debe ser una cadena de texto' })
+    pnf?: string;
+
+    @IsOptional()
+    @IsString({ message: 'El ID del PNF debe ser una cadena de texto' })
+    pnfId?: string;
+
+    // 💡 Compatibilidad con arreglos de nombres de PNF
+    @IsOptional()
+    @IsArray({ message: 'Los PNFs deben ser un arreglo' })
+    @IsString({ each: true, message: 'Cada nombre de PNF debe ser una cadena de texto' })
+    pnfs?: string[];
 
     @IsString()
     @MinLength(3, { message: 'La editorial debe tener un mínimo de 3 caracteres' })

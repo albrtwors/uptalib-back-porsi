@@ -13,6 +13,17 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// Programas Nacionales de Formación (creables desde la aplicación)
+
+model Pnf {
+  id            String         @id @default(cuid())
+  name          String         @unique
+  physicalBooks PhysicalBook[]
+  bookPnfs      BookPnf[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+}
+
 // Libros físicos
 
 model Category {
@@ -27,8 +38,8 @@ model Category {
 model PhysicalBook {
   id                String          @id @default(cuid())
   isbn              String?
+  code              String?         @unique
   title             String
-  pnf               Pnf?
   yearOfPublication Int
   editorial         String?
   totalStock        Int
@@ -36,6 +47,7 @@ model PhysicalBook {
   status            BookStatus      @default(DISPONIBLE)
   authors           Author[]
   categories        Category[]
+  pnfs              Pnf[]
   operations        BookOperation[]
   copies            BookCopy[]
   createdAt         DateTime        @default(now())
@@ -70,7 +82,7 @@ model BookOperation {
   personNames    String
   personSurNames String
   book           PhysicalBook  @relation(fields: [bookId], references: [id])
-  copy           BookCopy?      @relation(fields: [copyId], references: [id], onDelete: SetNull)
+  copy           BookCopy?     @relation(fields: [copyId], references: [id], onDelete: SetNull)
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
@@ -105,19 +117,6 @@ enum ItemStatus {
   DISPONIBLE
   AGOTADO
   MANTENIMIENTO
-}
-
-enum Pnf {
-  GENERAL
-  INFORMATICA
-  ELECTRONICA
-  MANTENIMIENTO
-  CONTADURIA
-  ADMINISTRACION
-  ELECTRICIDAD
-  MECANICA
-  INSTRUMENTACION
-  TELECOMUNICACIONES
 }
 
 enum OperationType {
@@ -179,11 +178,12 @@ model Book {
 model BookPnf {
   id        String   @id @default(cuid())
   bookId    Int
-  pnf       Pnf
+  pnfId     String
   book      Book     @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  pnf       Pnf      @relation(fields: [pnfId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
 
-  @@unique([bookId, pnf])
+  @@unique([bookId, pnfId])
 }
 
 model SavedBook {
@@ -205,13 +205,13 @@ model SavedBook {
 // Inventario
 
 model Item {
-  id             String          @id @default(cuid())
+  id             String     @id @default(cuid())
   name           String
   code           String?
   description    String?
   totalStock     Int
   availableStock Int
-  type           ItemType        @relation(fields: [typeId], references: [id])
+  type           ItemType   @relation(fields: [typeId], references: [id])
   typeId         String
   status         ItemStatus
   authors        Author[]
@@ -252,7 +252,7 @@ model ItemOperation {
   personNames    String
   personSurNames String
   item           Item          @relation(fields: [itemId], references: [id])
-  copy           ItemCopy?      @relation(fields: [copyId], references: [id], onDelete: SetNull)
+  copy           ItemCopy?     @relation(fields: [copyId], references: [id], onDelete: SetNull)
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 

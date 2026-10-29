@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common';
 import { CopyStatus } from '@prisma/client';
 
 /**
@@ -9,6 +10,19 @@ import { CopyStatus } from '@prisma/client';
 export interface CopyCodeParentBook {
   id: string;
   isbn?: string | null;
+  code?: string | null;
+}
+
+export interface CopyCodeRange {
+  from?: string | null;
+  to?: string | null;
+}
+
+export interface CopyExtra {
+  location?: string | null;
+  observations?: string | null;
+  codeFrom?: string | null;
+  codeTo?: string | null;
 }
 
 export interface CopyCodeParentItem {
@@ -21,9 +35,10 @@ function sanitize(seed: string): string {
   return clean.slice(0, 8) || 'GEN';
 }
 
-/** Prefijo de código para ejemplares de un libro físico: LIB-<ISBN|id> */
+/** Prefijo de código para ejemplares de un libro físico: LIB-<código|ISBN|id> */
 export function bookCopyBase(book: CopyCodeParentBook): string {
-  return `LIB-${sanitize(book.isbn && book.isbn.trim() ? book.isbn : book.id)}`;
+  const seed = book.code?.trim() || book.isbn?.trim() || book.id;
+  return `LIB-${sanitize(seed)}`;
 }
 
 /** Prefijo de código para ejemplares de un artículo: ART-<code|id> */
@@ -58,6 +73,63 @@ function uniquify(requested: string, used: Set<string>): string {
   return candidate;
 }
 
+interface ParsedRangeBound {
+  prefix: string;
+  start: number;
+  width: number;
+}
+
+function parseRangeBound(value: string): ParsedRangeBound {
+  const trimmed = value.trim();
+  const match = trimmed.match(/^(.*?)(\d+)$/);
+  if (match) {
+    return {
+      prefix: match[1],
+      start: parseInt(match[2], 10),
+      width: match[2].length,
+    };
+  }
+  const prefix = /[-_\s]$/.test(trimmed) ? trimmed : `${trimmed}-`;
+  return { prefix, start: 1, width: 4 };
+}
+
+/**
+ * Genera los códigos consecutivos de un rango. Ej:
+ * from="LIB-ABC-0001", to="LIB-ABC-0010" -> 10 códigos.
+ */
+export function buildRangeCodes(range: CopyCodeRange, quantity: number): string[] {
+  const from = `${range.from ?? ''}`.trim();
+  const to = `${range.to ?? ''}`.trim();
+
+  if (!from && !to) return [];
+  if (!from) throw new BadRequestException('Debes indicar el código inicial del rango');
+  if (quantity <= 0) return [];
+
+  const startBound = parseRangeBound(from);
+  let endNumber = startBound.start + quantity - 1;
+
+  if (to) {
+    const endBound = parseRangeBound(to);
+    if (endBound.prefix !== startBound.prefix) {
+      throw new BadRequestException('El código inicial y final del rango deben compartir el mismo prefijo');
+    }
+    if (endBound.start < startBound.start) {
+      throw new BadRequestException('El código final del rango no puede ser menor que el inicial');
+    }
+    const capacity = endBound.start - startBound.start + 1;
+    if (quantity > capacity) {
+      throw new BadRequestException(`El rango indicado solo permite ${capacity} ejemplares`);
+    }
+    endNumber = endBound.start;
+  }
+
+  const codes: string[] = [];
+  for (let n = startBound.start; n <= endNumber && codes.length < quantity; n += 1) {
+    codes.push(`${startBound.prefix}${String(n).padStart(startBound.width, '0')}`);
+  }
+  return codes;
+}
+
 /**
  * Construye la lista de códigos para un lote de ejemplares.
  * - Si el usuario envía `requestedCodes`, se respetan (con opción de edición).
@@ -69,13 +141,21 @@ export function buildCopyCodes(
   quantity: number,
   existing: Iterable<string> = [],
   requestedCodes: string[] = [],
+  range: CopyCodeRange = {},
 ): string[] {
   const used = new Set<string>([...existing].map((c) => c.toUpperCase()));
   const requested = (requestedCodes ?? []).map((c) => `${c}`.trim()).filter(Boolean);
+  const rangeCodes = buildRangeCodes(range, quantity);
   const codes: string[] = [];
 
   for (let i = 0; i < quantity; i += 1) {
     let code = requested[i];
+    if (!code && rangeCodes[i]) {
+      code = rangeCodes[i];
+      if (used.has(code.toUpperCase())) {
+        throw new BadRequestException(`El código ${code} del rango ya existe`);
+      }
+    }
     code = code ? uniquify(code, used) : nextSequentialCode(base, used);
     codes.push(code);
     used.add(code.toUpperCase());
@@ -93,7 +173,7 @@ export async function createBookCopies(
   book: CopyCodeParentBook,
   quantity: number,
   requestedCodes: string[] = [],
-  extra: { location?: string | null; observations?: string | null } = {},
+  extra: CopyExtra = {},
 ) {
   if (quantity <= 0) return [];
 
@@ -107,6 +187,7 @@ export async function createBookCopies(
     quantity,
     existing.map((c: any) => c.code),
     requestedCodes,
+    { from: extra.codeFrom, to: extra.codeTo },
   );
 
   const created = [];
@@ -135,7 +216,7 @@ export async function createItemCopies(
   item: CopyCodeParentItem,
   quantity: number,
   requestedCodes: string[] = [],
-  extra: { location?: string | null; observations?: string | null } = {},
+  extra: CopyExtra = {},
 ) {
   if (quantity <= 0) return [];
 
@@ -149,6 +230,7 @@ export async function createItemCopies(
     quantity,
     existing.map((c: any) => c.code),
     requestedCodes,
+    { from: extra.codeFrom, to: extra.codeTo },
   );
 
   const created = [];

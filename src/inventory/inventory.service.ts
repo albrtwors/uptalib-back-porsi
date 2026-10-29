@@ -79,7 +79,7 @@ export class InventoryService {
     item: { id: string; code?: string | null },
     quantity: number,
     requestedCodes: string[] = [],
-    extra: { location?: string | null; observations?: string | null } = {}
+    extra: { location?: string | null; observations?: string | null; codeFrom?: string | null; codeTo?: string | null } = {}
   ) {
     return createItemCopies(tx, item, quantity, requestedCodes, extra);
   }
@@ -418,7 +418,9 @@ export class InventoryService {
 
       await this.createCopies(tx, item, quantity, requestedCodes, {
         location: dto.location,
-        observations: dto.observations
+        observations: dto.observations,
+        codeFrom: dto.codeFrom,
+        codeTo: dto.codeTo
       });
 
       const summary = await recalcItemStock(tx, id);

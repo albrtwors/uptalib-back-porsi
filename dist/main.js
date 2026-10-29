@@ -2963,25 +2963,44 @@ function sanitize(seed) {
     const clean = `${seed}`.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
     return clean.slice(0, 8) || 'GEN';
 }
+function copyBase(assignedCode, kind, fallbackSeed) {
+    const code = `${assignedCode ?? ''}`.trim();
+    if (code)
+        return code.toUpperCase().replace(/\s+/g, '-');
+    return `${kind}-${sanitize(fallbackSeed)}`;
+}
 function bookCopyBase(book) {
-    const seed = book.code?.trim() || book.isbn?.trim() || book.id;
-    return `LIB-${sanitize(seed)}`;
+    return copyBase(book.code, 'LIB', `${book.isbn ?? ''}`.trim() || book.id);
 }
 function itemCopyBase(item) {
-    return `ART-${sanitize(item.code && `${item.code}`.trim() ? item.code : item.id)}`;
+    return copyBase(item.code, 'ART', item.id);
+}
+function highestSequence(base, used) {
+    const escaped = base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const sameBase = new RegExp(`^${escaped}-(\\d+)$`);
+    const anyTrailingNumber = /(\d+)$/;
+    let highest = 0;
+    let width = 4;
+    for (const code of used) {
+        if (code === base.toUpperCase())
+            continue;
+        const match = sameBase.exec(code) ?? anyTrailingNumber.exec(code);
+        if (!match)
+            continue;
+        const parsed = parseInt(match[1], 10);
+        if (Number.isNaN(parsed) || parsed <= highest)
+            continue;
+        highest = parsed;
+        width = Math.max(match[1].length, 2);
+    }
+    return { next: highest + 1, width };
 }
 function nextSequentialCode(base, used) {
-    let n = 1;
-    for (const code of used) {
-        if (code.startsWith(`${base}-`)) {
-            const parsed = parseInt(code.slice(base.length + 1), 10);
-            if (!Number.isNaN(parsed) && parsed >= n)
-                n = parsed + 1;
-        }
-    }
+    const { next, width } = highestSequence(base, used);
+    let n = next;
     let candidate;
     do {
-        candidate = `${base}-${String(n).padStart(4, '0')}`;
+        candidate = `${base}-${String(n).padStart(width, '0')}`;
         n += 1;
     } while (used.has(candidate.toUpperCase()));
     return candidate;
@@ -3910,7 +3929,7 @@ let PhysicalBooksService = class PhysicalBooksService {
             const record = records[index] ?? {};
             const { id, ...data } = record;
             const title = `${record.title ?? ''}`.trim() || `Registro ${index + 1}`;
-            const required = ['title', 'editorial', 'yearOfPublication', 'totalStock'];
+            const required = ['title', 'yearOfPublication', 'totalStock'];
             const missing = id ? [] : required.filter((field) => data?.[field] === undefined || `${data?.[field]}`.trim() === '');
             if (missing.length > 0) {
                 errors.push({ index, title, message: `Faltan campos obligatorios: ${missing.join(', ')}` });
@@ -4259,9 +4278,10 @@ __decorate([
     __metadata("design:type", Array)
 ], CreatePhysicalBookDto.prototype, "pnfs", void 0);
 __decorate([
-    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.IsOptional)(),
+    (0, class_transformer_1.Transform)(({ value }) => (`${value ?? ''}`.trim() || undefined)),
+    (0, class_validator_1.IsString)({ message: 'La editorial debe ser una cadena de texto' }),
     (0, class_validator_1.MinLength)(3, { message: 'La editorial debe tener un mínimo de 3 caracteres' }),
-    (0, class_validator_1.IsDefined)({ message: 'Debes incluir una editorial' }),
     __metadata("design:type", String)
 ], CreatePhysicalBookDto.prototype, "editorial", void 0);
 __decorate([

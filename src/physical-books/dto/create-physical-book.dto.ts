@@ -1,5 +1,5 @@
 import { Transform } from "class-transformer";
-import { IsArray, IsDefined, IsInt, IsOptional, IsPositive, IsString, MinLength } from "class-validator";
+import { IsArray, IsInt, IsOptional, IsPositive, IsString, MinLength } from "class-validator";
 
 export class CreatePhysicalBookDto {
 
@@ -109,10 +109,11 @@ export class CreatePhysicalBookDto {
     @IsString({ each: true, message: 'Cada nombre de PNF debe ser una cadena de texto' })
     pnfs?: string[];
 
-    @IsString()
+    @IsOptional()
+    @Transform(({ value }: any) => (`${value ?? ''}`.trim() || undefined))
+    @IsString({ message: 'La editorial debe ser una cadena de texto' })
     @MinLength(3, { message: 'La editorial debe tener un mínimo de 3 caracteres' })
-    @IsDefined({ message: 'Debes incluir una editorial' })
-    editorial: string;
+    editorial?: string;
 
     @Transform(({ value }: any) => parseInt(value))
     @IsInt()

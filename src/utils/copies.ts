@@ -35,28 +35,58 @@ function sanitize(seed: string): string {
   return clean.slice(0, 8) || 'GEN';
 }
 
-/** Prefijo de código para ejemplares de un libro físico: LIB-<código|ISBN|id> */
+/**
+ * Prefijo de los ejemplares. Si el registro tiene código asignado por la
+ * biblioteca se usa tal cual, sin transformarlo: así los ejemplares heredan el
+ * código real del libro/artículo. Solo si no tiene código se generan a partir
+ * del ISBN o del id.
+ */
+function copyBase(assignedCode: string | null | undefined, kind: string, fallbackSeed: string): string {
+  const code = `${assignedCode ?? ''}`.trim();
+  if (code) return code.toUpperCase().replace(/\s+/g, '-');
+  return `${kind}-${sanitize(fallbackSeed)}`;
+}
+
+/** Prefijo de código para ejemplares de un libro físico: <código|LIB-ISBN|LIB-id> */
 export function bookCopyBase(book: CopyCodeParentBook): string {
-  const seed = book.code?.trim() || book.isbn?.trim() || book.id;
-  return `LIB-${sanitize(seed)}`;
+  return copyBase(book.code, 'LIB', `${book.isbn ?? ''}`.trim() || book.id);
 }
 
-/** Prefijo de código para ejemplares de un artículo: ART-<code|id> */
+/** Prefijo de código para ejemplares de un artículo: <código|ART-id> */
 export function itemCopyBase(item: CopyCodeParentItem): string {
-  return `ART-${sanitize(item.code && `${item.code}`.trim() ? item.code : item.id)}`;
+  return copyBase(item.code, 'ART', item.id);
 }
 
-function nextSequentialCode(base: string, used: Set<string>): string {
-  let n = 1;
+/** Último número de una cadena de códigos, o 0 si ninguno termina en número. */
+function highestSequence(base: string, used: Set<string>): { next: number; width: number } {
+  const escaped = base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const sameBase = new RegExp(`^${escaped}-(\\d+)$`);
+  const anyTrailingNumber = /(\d+)$/;
+  let highest = 0;
+  let width = 4;
   for (const code of used) {
-    if (code.startsWith(`${base}-`)) {
-      const parsed = parseInt(code.slice(base.length + 1), 10);
-      if (!Number.isNaN(parsed) && parsed >= n) n = parsed + 1;
-    }
+    if (code === base.toUpperCase()) continue;
+    const match = sameBase.exec(code) ?? anyTrailingNumber.exec(code);
+    if (!match) continue;
+    const parsed = parseInt(match[1], 10);
+    if (Number.isNaN(parsed) || parsed <= highest) continue;
+    highest = parsed;
+    width = Math.max(match[1].length, 2);
   }
+  return { next: highest + 1, width };
+}
+
+/**
+ * Genera el siguiente código consecutivo. El contador continúa el número más
+ * alto ya existente para ese libro/artículo, aunque los ejemplares antiguos se
+ * hayan creado con un prefijo distinto (por ejemplo tras cambiar el código).
+ */
+function nextSequentialCode(base: string, used: Set<string>): string {
+  const { next, width } = highestSequence(base, used);
+  let n = next;
   let candidate: string;
   do {
-    candidate = `${base}-${String(n).padStart(4, '0')}`;
+    candidate = `${base}-${String(n).padStart(width, '0')}`;
     n += 1;
   } while (used.has(candidate.toUpperCase()));
   return candidate;

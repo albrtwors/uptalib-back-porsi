@@ -566,7 +566,7 @@ export class PhysicalBooksService {
 
       // 💡 El DTO del lote es parcial a propósito (permite updates), así que los
       // campos obligatorios de un alta se validan aquí registro por registro.
-      const required = ['title', 'editorial', 'yearOfPublication', 'totalStock'];
+      const required = ['title', 'yearOfPublication', 'totalStock'];
       const missing = id ? [] : required.filter((field) => data?.[field] === undefined || `${data?.[field]}`.trim() === '');
       if (missing.length > 0) {
         errors.push({ index, title, message: `Faltan campos obligatorios: ${missing.join(', ')}` });

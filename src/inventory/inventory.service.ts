@@ -4,6 +4,7 @@ import { PrismaService } from 'prisma/prisma.service';
 import { getPagination } from '../functions/pagination/getPagination';
 import getStockDifference from '../utils/getDifference';
 import { createItemCopies, recalcItemStock } from '../utils/copies';
+import { bulkSummaryMessage } from '../utils/bulk';
 
 @Injectable()
 export class InventoryService {
@@ -402,6 +403,20 @@ export class InventoryService {
     await this.prisma.itemOperation.deleteMany({ where: { itemId: id } });
     const item = await this.prisma.item.delete({ where: { id } });
     return { item, message: 'Item Eliminado correctamente' };
+  }
+
+  async removeMany(ids: string[]) {
+    const deleted = await this.prisma.$transaction(async (tx) => {
+      await tx.itemOperation.deleteMany({ where: { itemId: { in: ids } } });
+      // 💡 ItemCopy tiene onDelete: Cascade, los ejemplares se eliminan con el artículo
+      return (await tx.item.deleteMany({ where: { id: { in: ids } } })).count;
+    });
+
+    return {
+      status: 'success',
+      message: bulkSummaryMessage({ deleted, failed: ids.length - deleted }),
+      data: { deleted }
+    };
   }
 
   // 📦 Gestión de ejemplares individuales

@@ -7,6 +7,7 @@ import { DropDto } from './dto/drop-dto';
 import { EntrieDto } from './dto/entrie-dto';
 import { LoanDto } from './dto/loan-dto';
 import { createBookCopies, recalcBookStock } from '../utils/copies';
+import { bulkSummaryMessage } from '../utils/bulk';
 
 @Injectable()
 export class PhysicalBookOperationService {
@@ -341,7 +342,40 @@ export class PhysicalBookOperationService {
     return `This action updates a #${id} physicalBookOperation`;
   }
 
-  remove(id: number) {
-    return `This action removes a #${id} physicalBookOperation`;
+  /** Un préstamo sólo puede borrarse del historial una vez devuelto. */
+  private isDeletable(operation: { type: OperationType; wasSettled: boolean | null }) {
+    return operation.type !== OperationType.PRESTAMO || operation.wasSettled === true;
+  }
+
+  async remove(id: string) {
+    const operation = await this.prisma.bookOperation.findUnique({ where: { id } });
+    if (!operation) throw new HttpException('Operación no encontrada', HttpStatus.NOT_FOUND);
+    if (!this.isDeletable(operation)) {
+      throw new BadRequestException('No puedes eliminar un préstamo que no se ha devuelto. Líquidalo primero.');
+    }
+
+    await this.prisma.bookOperation.delete({ where: { id } });
+    return { status: 'success', message: 'Operación eliminada' };
+  }
+
+  /**
+   * Borrado en lote. Los préstamos pendientes se conservan y se reportan,
+   * el resto de movimientos se elimina sin frenar el resto del lote.
+   */
+  async removeMany(ids: string[]) {
+    const operations = await this.prisma.bookOperation.findMany({ where: { id: { in: ids } } });
+    const allowedIds = operations.filter((operation) => this.isDeletable(operation)).map((operation) => operation.id);
+    const refused = operations.length - allowedIds.length;
+
+    const deleted = allowedIds.length === 0
+      ? 0
+      : (await this.prisma.bookOperation.deleteMany({ where: { id: { in: allowedIds } } })).count;
+
+    const notFound = ids.length - operations.length;
+    return {
+      status: 'success',
+      message: `${bulkSummaryMessage({ deleted, failed: notFound })}${refused > 0 ? `. ${refused} préstamo(s) sin devolver se mantuvieron` : ''}`,
+      data: { deleted, refused }
+    };
   }
 }

@@ -3,6 +3,7 @@ import { CopyStatus } from '@prisma/client';
 import { PrismaService } from 'prisma/prisma.service';
 import { CopyExtra, createBookCopies, recalcBookStock } from '../utils/copies';
 import { normalizePnfFilter, resolvePnfIds } from '../utils/pnf';
+import { bulkErrorMessage, bulkSummaryMessage } from '../utils/bulk';
 
 @Injectable()
 export class PhysicalBooksService {
@@ -546,5 +547,58 @@ export class PhysicalBooksService {
     await this.prisma.bookOperation.deleteMany({ where: { bookId: id } });
     await this.prisma.physicalBook.delete({ where: { id } });
     return { status: 'success', message: 'Libro físico eliminado' };
+  }
+
+  /**
+   * Crea o actualiza uno o varios registros en un mismo request. Cada registro se
+   * procesa por separado (create/update ya son transaccionales) así que un registro
+   * inválido no descarta los demás: se reporta en el resumen final.
+   */
+  async bulkUpsert(records: any[]) {
+    const created: any[] = [];
+    const updated: any[] = [];
+    const errors: { index: number; title: string; message: string }[] = [];
+
+    for (let index = 0; index < records.length; index++) {
+      const record = records[index] ?? {};
+      const { id, ...data } = record;
+      const title = `${record.title ?? ''}`.trim() || `Registro ${index + 1}`;
+
+      // 💡 El DTO del lote es parcial a propósito (permite updates), así que los
+      // campos obligatorios de un alta se validan aquí registro por registro.
+      const required = ['title', 'editorial', 'yearOfPublication', 'totalStock'];
+      const missing = id ? [] : required.filter((field) => data?.[field] === undefined || `${data?.[field]}`.trim() === '');
+      if (missing.length > 0) {
+        errors.push({ index, title, message: `Faltan campos obligatorios: ${missing.join(', ')}` });
+        continue;
+      }
+
+      try {
+        const result: any = id ? await this.update(id, data) : await this.create(data);
+        (id ? updated : created).push(result?.data ?? result);
+      } catch (error: any) {
+        errors.push({ index, title, message: bulkErrorMessage(error) });
+      }
+    }
+
+    return {
+      status: 'success',
+      message: bulkSummaryMessage({ created: created.length, updated: updated.length, failed: errors.length }),
+      data: { created, updated, errors }
+    };
+  }
+
+  async removeMany(ids: string[]) {
+    const deleted = await this.prisma.$transaction(async (tx) => {
+      await tx.bookOperation.deleteMany({ where: { bookId: { in: ids } } });
+      // 💡 BookCopy tiene onDelete: Cascade, los ejemplares se eliminan con el libro
+      return (await tx.physicalBook.deleteMany({ where: { id: { in: ids } } })).count;
+    });
+
+    return {
+      status: 'success',
+      message: bulkSummaryMessage({ deleted, failed: ids.length - deleted }),
+      data: { deleted }
+    };
   }
 }

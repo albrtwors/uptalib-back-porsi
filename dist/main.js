@@ -42,7 +42,7 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 const core_1 = __webpack_require__(1);
 const app_module_1 = __webpack_require__(2);
 const common_1 = __webpack_require__(3);
-const swagger_1 = __webpack_require__(51);
+const swagger_1 = __webpack_require__(54);
 const express = __importStar(__webpack_require__(24));
 let cachedExpressApp;
 async function bootstrapServer() {
@@ -50,7 +50,7 @@ async function bootstrapServer() {
         return cachedExpressApp;
     }
     const app = await core_1.NestFactory.create(app_module_1.AppModule);
-    const cookieParser = __webpack_require__(128);
+    const cookieParser = __webpack_require__(131);
     const localConfig = { origin: ['http://localhost:3000'], credentials: true };
     const isLocal = process.env.isLocal;
     app.enableCors(isLocal == 'true' ? localConfig : {});
@@ -76,7 +76,7 @@ async function bootstrapServer() {
 if (process.env.isLocal === 'true') {
     async function bootstrapLocal() {
         const app = await core_1.NestFactory.create(app_module_1.AppModule);
-        const cookieParser = __webpack_require__(128);
+        const cookieParser = __webpack_require__(131);
         const localConfig = { origin: ['http://localhost:3000'], credentials: true };
         app.enableCors(localConfig);
         app.use(cookieParser());
@@ -119,23 +119,23 @@ const prisma_module_1 = __webpack_require__(5);
 const auth_module_1 = __webpack_require__(8);
 const user_module_1 = __webpack_require__(27);
 const books_module_1 = __webpack_require__(36);
-const inventory_module_1 = __webpack_require__(44);
-const serve_static_1 = __webpack_require__(54);
-const path_1 = __webpack_require__(55);
-const platform_express_1 = __webpack_require__(56);
-const physical_books_module_1 = __webpack_require__(57);
-const category_module_1 = __webpack_require__(62);
-const author_module_1 = __webpack_require__(67);
-const pnf_module_1 = __webpack_require__(72);
-const physical_book_operation_module_1 = __webpack_require__(77);
-const item_type_module_1 = __webpack_require__(85);
-const inventory_operation_module_1 = __webpack_require__(90);
-const logs_module_1 = __webpack_require__(98);
-const backup_module_1 = __webpack_require__(104);
-const sync_module_1 = __webpack_require__(108);
-const ai_books_module_1 = __webpack_require__(113);
-const ai_inventory_module_1 = __webpack_require__(120);
-const ai_physical_book_module_1 = __webpack_require__(124);
+const inventory_module_1 = __webpack_require__(47);
+const serve_static_1 = __webpack_require__(56);
+const path_1 = __webpack_require__(57);
+const platform_express_1 = __webpack_require__(58);
+const physical_books_module_1 = __webpack_require__(59);
+const category_module_1 = __webpack_require__(65);
+const author_module_1 = __webpack_require__(70);
+const pnf_module_1 = __webpack_require__(75);
+const physical_book_operation_module_1 = __webpack_require__(80);
+const item_type_module_1 = __webpack_require__(88);
+const inventory_operation_module_1 = __webpack_require__(93);
+const logs_module_1 = __webpack_require__(101);
+const backup_module_1 = __webpack_require__(107);
+const sync_module_1 = __webpack_require__(111);
+const ai_books_module_1 = __webpack_require__(116);
+const ai_inventory_module_1 = __webpack_require__(123);
+const ai_physical_book_module_1 = __webpack_require__(127);
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -1683,9 +1683,9 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.BooksModule = void 0;
 const common_1 = __webpack_require__(3);
 const books_service_1 = __webpack_require__(37);
-const books_controller_1 = __webpack_require__(39);
+const books_controller_1 = __webpack_require__(43);
 const prisma_module_1 = __webpack_require__(5);
-const bulk_books_service_1 = __webpack_require__(43);
+const bulk_books_service_1 = __webpack_require__(46);
 let BooksModule = class BooksModule {
 };
 exports.BooksModule = BooksModule;
@@ -1719,6 +1719,8 @@ exports.BookService = void 0;
 const common_1 = __webpack_require__(3);
 const prisma_service_1 = __webpack_require__(6);
 const pnf_1 = __webpack_require__(38);
+const bulk_1 = __webpack_require__(39);
+const deleteFile_1 = __webpack_require__(40);
 let BookService = class BookService {
     constructor(prisma) {
         this.prisma = prisma;
@@ -1840,6 +1842,48 @@ let BookService = class BookService {
         return {
             book: await this.prisma.book.delete({ where: { id } }),
             message: 'Libro Eliminado'
+        };
+    }
+    async deleteMany(ids, req) {
+        let deleted = 0;
+        const errors = [];
+        for (const id of ids) {
+            try {
+                const book = await this.prisma.book.findFirst({ where: { id } });
+                if (!book)
+                    throw new common_1.NotFoundException('El libro no existe');
+                const bucketName = 'pdfs';
+                if (book.routepdf && book.routepdf.includes(`${bucketName}/`)) {
+                    const supabasePath = book.routepdf.split(`${bucketName}/`)[1];
+                    if (supabasePath) {
+                        try {
+                            await (0, deleteFile_1.deleteFile)(supabasePath, 'pdfs');
+                        }
+                        catch (error) {
+                            console.error('No se pudo borrar el archivo en Supabase:', error);
+                        }
+                    }
+                }
+                await this.prisma.bookPnf.deleteMany({ where: { bookId: id } });
+                await this.prisma.savedBook.deleteMany({ where: { bookId: id } });
+                await this.prisma.book.delete({ where: { id } });
+                deleted++;
+            }
+            catch (error) {
+                errors.push({ id, message: (0, bulk_1.bulkErrorMessage)(error) });
+            }
+        }
+        await this.prisma.operation.create({
+            data: {
+                userId: req.user.userId,
+                ip: req.ip,
+                action: `Eliminó ${deleted} libro(s) digital(es) en lote`
+            }
+        });
+        return {
+            status: 'success',
+            message: (0, bulk_1.bulkSummaryMessage)({ deleted, failed: errors.length }),
+            data: { deleted, errors }
         };
     }
     async edit(id, data, req) {
@@ -2015,6 +2059,73 @@ async function resolvePnfIds(tx, ids = [], names = []) {
 
 /***/ }),
 /* 39 */
+/***/ ((__unused_webpack_module, exports) => {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.bulkErrorMessage = bulkErrorMessage;
+exports.bulkSummaryMessage = bulkSummaryMessage;
+function bulkErrorMessage(error) {
+    const message = error?.message ?? error?.response ?? 'Error desconocido';
+    if (Array.isArray(message))
+        return message.join('. ');
+    return `${message}`;
+}
+function bulkSummaryMessage(parts) {
+    const summary = [];
+    if (parts.created)
+        summary.push(`${parts.created} creado(s)`);
+    if (parts.updated)
+        summary.push(`${parts.updated} actualizado(s)`);
+    if (parts.deleted)
+        summary.push(`${parts.deleted} eliminado(s)`);
+    if (parts.failed)
+        summary.push(`${parts.failed} con error`);
+    return summary.length > 0 ? `Operación en lote: ${summary.join(', ')}` : 'No se procesó ningún registro';
+}
+
+
+/***/ }),
+/* 40 */
+/***/ ((__unused_webpack_module, exports, __webpack_require__) => {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.deleteFile = deleteFile;
+const supabase_1 = __webpack_require__(41);
+async function deleteFile(supabasePath, bucket) {
+    const bucketName = bucket;
+    const { data, error } = await supabase_1.supabase.storage
+        .from(bucketName)
+        .remove([supabasePath]);
+    if (error) {
+        throw new Error(`Error al eliminar archivo de Supabase: ${error.message}`);
+    }
+    console.log(`Archivo eliminado con éxito de Supabase: ${supabasePath}`);
+}
+
+
+/***/ }),
+/* 41 */
+/***/ ((__unused_webpack_module, exports, __webpack_require__) => {
+
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.supabase = void 0;
+const supabase_js_1 = __webpack_require__(42);
+const supabaseUrl = process.env.SUPABASE_URL || '';
+const supabaseKey = process.env.SUPABASE_KEY || '';
+exports.supabase = (0, supabase_js_1.createClient)(supabaseUrl, supabaseKey);
+
+
+/***/ }),
+/* 42 */
+/***/ ((module) => {
+
+module.exports = require("@supabase/supabase-js");
+
+/***/ }),
+/* 43 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -2030,7 +2141,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 var __param = (this && this.__param) || function (paramIndex, decorator) {
     return function (target, key) { decorator(target, key, paramIndex); }
 };
-var _a;
+var _a, _b;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.BookController = void 0;
 const common_1 = __webpack_require__(3);
@@ -2040,6 +2151,7 @@ const roles_guard_1 = __webpack_require__(30);
 const roles_decorator_1 = __webpack_require__(31);
 const client_1 = __webpack_require__(7);
 const deleteFile_1 = __webpack_require__(40);
+const bulk_ids_dto_1 = __webpack_require__(44);
 let BookController = class BookController {
     constructor(bookService) {
         this.bookService = bookService;
@@ -2059,6 +2171,9 @@ let BookController = class BookController {
         }
         console.log('Registrando libro multi-autor y multi-pnf en la BD:', data.title);
         return this.bookService.create(data, req);
+    }
+    bulkDelete(bulkIdsDto, req) {
+        return this.bookService.deleteMany(bulkIdsDto.ids, req);
     }
     async delete(id, req) {
         const book = await this.bookService.findOne(id);
@@ -2127,6 +2242,16 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], BookController.prototype, "create", null);
 __decorate([
+    (0, common_1.Post)('bulk-delete'),
+    (0, roles_decorator_1.Roles)(client_1.Role.LIBRARIAN, client_1.Role.ADMIN),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
+    __param(0, (0, common_1.Body)()),
+    __param(1, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [typeof (_b = typeof bulk_ids_dto_1.BulkIntIdsDto !== "undefined" && bulk_ids_dto_1.BulkIntIdsDto) === "function" ? _b : Object, Object]),
+    __metadata("design:returntype", void 0)
+], BookController.prototype, "bulkDelete", null);
+__decorate([
     (0, common_1.Delete)(':id'),
     (0, roles_decorator_1.Roles)(client_1.Role.LIBRARIAN, client_1.Role.ADMIN),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
@@ -2181,46 +2306,52 @@ exports.BookController = BookController = __decorate([
 
 
 /***/ }),
-/* 40 */
-/***/ ((__unused_webpack_module, exports, __webpack_require__) => {
+/* 44 */
+/***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.deleteFile = deleteFile;
-const supabase_1 = __webpack_require__(41);
-async function deleteFile(supabasePath, bucket) {
-    const bucketName = bucket;
-    const { data, error } = await supabase_1.supabase.storage
-        .from(bucketName)
-        .remove([supabasePath]);
-    if (error) {
-        throw new Error(`Error al eliminar archivo de Supabase: ${error.message}`);
-    }
-    console.log(`Archivo eliminado con éxito de Supabase: ${supabasePath}`);
+exports.BulkIntIdsDto = exports.BulkIdsDto = void 0;
+const class_transformer_1 = __webpack_require__(45);
+const class_validator_1 = __webpack_require__(19);
+class BulkIdsDto {
 }
+exports.BulkIdsDto = BulkIdsDto;
+__decorate([
+    (0, class_validator_1.IsArray)({ message: 'Los IDs deben ser un arreglo' }),
+    (0, class_validator_1.ArrayNotEmpty)({ message: 'Debes seleccionar al menos un registro' }),
+    (0, class_validator_1.IsString)({ each: true, message: 'Cada ID debe ser una cadena de texto' }),
+    __metadata("design:type", Array)
+], BulkIdsDto.prototype, "ids", void 0);
+class BulkIntIdsDto {
+}
+exports.BulkIntIdsDto = BulkIntIdsDto;
+__decorate([
+    (0, class_transformer_1.Transform)(({ value }) => Array.isArray(value) ? value.map((v) => parseInt(`${v}`)) : value),
+    (0, class_validator_1.IsArray)({ message: 'Los IDs deben ser un arreglo' }),
+    (0, class_validator_1.ArrayNotEmpty)({ message: 'Debes seleccionar al menos un registro' }),
+    (0, class_validator_1.IsInt)({ each: true, message: 'Cada ID debe ser un número entero' }),
+    __metadata("design:type", Array)
+], BulkIntIdsDto.prototype, "ids", void 0);
 
 
 /***/ }),
-/* 41 */
-/***/ ((__unused_webpack_module, exports, __webpack_require__) => {
-
-
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.supabase = void 0;
-const supabase_js_1 = __webpack_require__(42);
-const supabaseUrl = process.env.SUPABASE_URL || '';
-const supabaseKey = process.env.SUPABASE_KEY || '';
-exports.supabase = (0, supabase_js_1.createClient)(supabaseUrl, supabaseKey);
-
-
-/***/ }),
-/* 42 */
+/* 45 */
 /***/ ((module) => {
 
-module.exports = require("@supabase/supabase-js");
+module.exports = require("class-transformer");
 
 /***/ }),
-/* 43 */
+/* 46 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -2344,7 +2475,7 @@ exports.BulkBooksService = BulkBooksService = __decorate([
 
 
 /***/ }),
-/* 44 */
+/* 47 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -2357,8 +2488,8 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.InventoryModule = void 0;
 const common_1 = __webpack_require__(3);
-const inventory_service_1 = __webpack_require__(45);
-const inventory_controller_1 = __webpack_require__(49);
+const inventory_service_1 = __webpack_require__(48);
+const inventory_controller_1 = __webpack_require__(52);
 let InventoryModule = class InventoryModule {
 };
 exports.InventoryModule = InventoryModule;
@@ -2371,7 +2502,7 @@ exports.InventoryModule = InventoryModule = __decorate([
 
 
 /***/ }),
-/* 45 */
+/* 48 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -2392,10 +2523,11 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.InventoryService = void 0;
 const common_1 = __webpack_require__(3);
 const client_1 = __webpack_require__(7);
-const prisma_service_1 = __webpack_require__(46);
+const prisma_service_1 = __webpack_require__(49);
 const getPagination_1 = __webpack_require__(16);
-const getDifference_1 = __importDefault(__webpack_require__(47));
-const copies_1 = __webpack_require__(48);
+const getDifference_1 = __importDefault(__webpack_require__(50));
+const copies_1 = __webpack_require__(51);
+const bulk_1 = __webpack_require__(39);
 let InventoryService = class InventoryService {
     constructor(prisma) {
         this.prisma = prisma;
@@ -2697,6 +2829,17 @@ let InventoryService = class InventoryService {
         const item = await this.prisma.item.delete({ where: { id } });
         return { item, message: 'Item Eliminado correctamente' };
     }
+    async removeMany(ids) {
+        const deleted = await this.prisma.$transaction(async (tx) => {
+            await tx.itemOperation.deleteMany({ where: { itemId: { in: ids } } });
+            return (await tx.item.deleteMany({ where: { id: { in: ids } } })).count;
+        });
+        return {
+            status: 'success',
+            message: (0, bulk_1.bulkSummaryMessage)({ deleted, failed: ids.length - deleted }),
+            data: { deleted }
+        };
+    }
     async addCopies(id, dto) {
         return this.prisma.$transaction(async (tx) => {
             const item = await tx.item.findUnique({ where: { id } });
@@ -2781,13 +2924,13 @@ exports.InventoryService = InventoryService = __decorate([
 
 
 /***/ }),
-/* 46 */
+/* 49 */
 /***/ ((module) => {
 
 module.exports = require("prisma/prisma.service");
 
 /***/ }),
-/* 47 */
+/* 50 */
 /***/ ((__unused_webpack_module, exports) => {
 
 
@@ -2801,7 +2944,7 @@ function getStockDifference({ newStockValue, oldCurrentStockValue, oldAvailableS
 
 
 /***/ }),
-/* 48 */
+/* 51 */
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 
@@ -3007,7 +3150,7 @@ async function recalcItemStock(tx, itemId) {
 
 
 /***/ }),
-/* 49 */
+/* 52 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -3023,13 +3166,14 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 var __param = (this && this.__param) || function (paramIndex, decorator) {
     return function (target, key) { decorator(target, key, paramIndex); }
 };
-var _a, _b, _c;
+var _a, _b, _c, _d;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.InventoryController = void 0;
 const common_1 = __webpack_require__(3);
-const inventory_service_1 = __webpack_require__(45);
-const edit_item_dto_1 = __webpack_require__(50);
-const create_inventory_dto_1 = __webpack_require__(52);
+const inventory_service_1 = __webpack_require__(48);
+const edit_item_dto_1 = __webpack_require__(53);
+const create_inventory_dto_1 = __webpack_require__(55);
+const bulk_ids_dto_1 = __webpack_require__(44);
 const client_1 = __webpack_require__(7);
 const roles_guard_1 = __webpack_require__(30);
 const jwt_auth_guard_1 = __webpack_require__(25);
@@ -3040,6 +3184,9 @@ let InventoryController = class InventoryController {
     }
     create(createInventoryDto) {
         return this.inventoryService.create(createInventoryDto);
+    }
+    bulkDelete(bulkIdsDto) {
+        return this.inventoryService.removeMany(bulkIdsDto.ids);
     }
     findAll(query) {
         return this.inventoryService.findAll(query);
@@ -3076,6 +3223,15 @@ __decorate([
     __metadata("design:paramtypes", [typeof (_b = typeof create_inventory_dto_1.CreateInventoryDto !== "undefined" && create_inventory_dto_1.CreateInventoryDto) === "function" ? _b : Object]),
     __metadata("design:returntype", void 0)
 ], InventoryController.prototype, "create", null);
+__decorate([
+    (0, common_1.Post)('bulk-delete'),
+    (0, roles_decorator_1.Roles)(client_1.Role.LIBRARIAN, client_1.Role.ADMIN),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [typeof (_c = typeof bulk_ids_dto_1.BulkIdsDto !== "undefined" && bulk_ids_dto_1.BulkIdsDto) === "function" ? _c : Object]),
+    __metadata("design:returntype", void 0)
+], InventoryController.prototype, "bulkDelete", null);
 __decorate([
     (0, common_1.Get)(),
     (0, roles_decorator_1.Roles)(client_1.Role.LIBRARIAN, client_1.Role.ADMIN),
@@ -3139,7 +3295,7 @@ __decorate([
     __param(0, (0, common_1.Param)('id')),
     __param(1, (0, common_1.Body)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, typeof (_c = typeof edit_item_dto_1.EditItemInventory !== "undefined" && edit_item_dto_1.EditItemInventory) === "function" ? _c : Object]),
+    __metadata("design:paramtypes", [String, typeof (_d = typeof edit_item_dto_1.EditItemInventory !== "undefined" && edit_item_dto_1.EditItemInventory) === "function" ? _d : Object]),
     __metadata("design:returntype", void 0)
 ], InventoryController.prototype, "edit", null);
 __decorate([
@@ -3158,27 +3314,27 @@ exports.InventoryController = InventoryController = __decorate([
 
 
 /***/ }),
-/* 50 */
+/* 53 */
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.EditItemInventory = void 0;
-const swagger_1 = __webpack_require__(51);
-const create_inventory_dto_1 = __webpack_require__(52);
+const swagger_1 = __webpack_require__(54);
+const create_inventory_dto_1 = __webpack_require__(55);
 class EditItemInventory extends (0, swagger_1.PartialType)(create_inventory_dto_1.CreateInventoryDto) {
 }
 exports.EditItemInventory = EditItemInventory;
 
 
 /***/ }),
-/* 51 */
+/* 54 */
 /***/ ((module) => {
 
 module.exports = require("@nestjs/swagger");
 
 /***/ }),
-/* 52 */
+/* 55 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -3193,7 +3349,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.CreateInventoryDto = void 0;
-const class_transformer_1 = __webpack_require__(53);
+const class_transformer_1 = __webpack_require__(45);
 const class_validator_1 = __webpack_require__(19);
 class CreateInventoryDto {
 }
@@ -3281,31 +3437,25 @@ __decorate([
 
 
 /***/ }),
-/* 53 */
-/***/ ((module) => {
-
-module.exports = require("class-transformer");
-
-/***/ }),
-/* 54 */
+/* 56 */
 /***/ ((module) => {
 
 module.exports = require("@nestjs/serve-static");
 
 /***/ }),
-/* 55 */
+/* 57 */
 /***/ ((module) => {
 
 module.exports = require("path");
 
 /***/ }),
-/* 56 */
+/* 58 */
 /***/ ((module) => {
 
 module.exports = require("@nestjs/platform-express");
 
 /***/ }),
-/* 57 */
+/* 59 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -3318,8 +3468,8 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.PhysicalBooksModule = void 0;
 const common_1 = __webpack_require__(3);
-const physical_books_service_1 = __webpack_require__(58);
-const physical_books_controller_1 = __webpack_require__(59);
+const physical_books_service_1 = __webpack_require__(60);
+const physical_books_controller_1 = __webpack_require__(61);
 let PhysicalBooksModule = class PhysicalBooksModule {
 };
 exports.PhysicalBooksModule = PhysicalBooksModule;
@@ -3332,7 +3482,7 @@ exports.PhysicalBooksModule = PhysicalBooksModule = __decorate([
 
 
 /***/ }),
-/* 58 */
+/* 60 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -3350,9 +3500,10 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.PhysicalBooksService = void 0;
 const common_1 = __webpack_require__(3);
 const client_1 = __webpack_require__(7);
-const prisma_service_1 = __webpack_require__(46);
-const copies_1 = __webpack_require__(48);
+const prisma_service_1 = __webpack_require__(49);
+const copies_1 = __webpack_require__(51);
 const pnf_1 = __webpack_require__(38);
+const bulk_1 = __webpack_require__(39);
 let PhysicalBooksService = class PhysicalBooksService {
     constructor(prisma) {
         this.prisma = prisma;
@@ -3751,6 +3902,45 @@ let PhysicalBooksService = class PhysicalBooksService {
         await this.prisma.physicalBook.delete({ where: { id } });
         return { status: 'success', message: 'Libro físico eliminado' };
     }
+    async bulkUpsert(records) {
+        const created = [];
+        const updated = [];
+        const errors = [];
+        for (let index = 0; index < records.length; index++) {
+            const record = records[index] ?? {};
+            const { id, ...data } = record;
+            const title = `${record.title ?? ''}`.trim() || `Registro ${index + 1}`;
+            const required = ['title', 'editorial', 'yearOfPublication', 'totalStock'];
+            const missing = id ? [] : required.filter((field) => data?.[field] === undefined || `${data?.[field]}`.trim() === '');
+            if (missing.length > 0) {
+                errors.push({ index, title, message: `Faltan campos obligatorios: ${missing.join(', ')}` });
+                continue;
+            }
+            try {
+                const result = id ? await this.update(id, data) : await this.create(data);
+                (id ? updated : created).push(result?.data ?? result);
+            }
+            catch (error) {
+                errors.push({ index, title, message: (0, bulk_1.bulkErrorMessage)(error) });
+            }
+        }
+        return {
+            status: 'success',
+            message: (0, bulk_1.bulkSummaryMessage)({ created: created.length, updated: updated.length, failed: errors.length }),
+            data: { created, updated, errors }
+        };
+    }
+    async removeMany(ids) {
+        const deleted = await this.prisma.$transaction(async (tx) => {
+            await tx.bookOperation.deleteMany({ where: { bookId: { in: ids } } });
+            return (await tx.physicalBook.deleteMany({ where: { id: { in: ids } } })).count;
+        });
+        return {
+            status: 'success',
+            message: (0, bulk_1.bulkSummaryMessage)({ deleted, failed: ids.length - deleted }),
+            data: { deleted }
+        };
+    }
 };
 exports.PhysicalBooksService = PhysicalBooksService;
 exports.PhysicalBooksService = PhysicalBooksService = __decorate([
@@ -3760,7 +3950,7 @@ exports.PhysicalBooksService = PhysicalBooksService = __decorate([
 
 
 /***/ }),
-/* 59 */
+/* 61 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -3776,13 +3966,15 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 var __param = (this && this.__param) || function (paramIndex, decorator) {
     return function (target, key) { decorator(target, key, paramIndex); }
 };
-var _a, _b, _c;
+var _a, _b, _c, _d, _e;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.PhysicalBooksController = void 0;
 const common_1 = __webpack_require__(3);
-const physical_books_service_1 = __webpack_require__(58);
-const create_physical_book_dto_1 = __webpack_require__(60);
-const update_physical_book_dto_1 = __webpack_require__(61);
+const physical_books_service_1 = __webpack_require__(60);
+const create_physical_book_dto_1 = __webpack_require__(62);
+const update_physical_book_dto_1 = __webpack_require__(63);
+const bulk_physical_book_dto_1 = __webpack_require__(64);
+const bulk_ids_dto_1 = __webpack_require__(44);
 const client_1 = __webpack_require__(7);
 const roles_guard_1 = __webpack_require__(30);
 const jwt_auth_guard_1 = __webpack_require__(25);
@@ -3793,6 +3985,12 @@ let PhysicalBooksController = class PhysicalBooksController {
     }
     create(createPhysicalBookDto) {
         return this.physicalBooksService.create(createPhysicalBookDto);
+    }
+    bulk(bulkPhysicalBookDto) {
+        return this.physicalBooksService.bulkUpsert(bulkPhysicalBookDto.records);
+    }
+    bulkDelete(bulkIdsDto) {
+        return this.physicalBooksService.removeMany(bulkIdsDto.ids);
     }
     findAll(query) {
         return this.physicalBooksService.findAll(query);
@@ -3829,6 +4027,24 @@ __decorate([
     __metadata("design:paramtypes", [typeof (_b = typeof create_physical_book_dto_1.CreatePhysicalBookDto !== "undefined" && create_physical_book_dto_1.CreatePhysicalBookDto) === "function" ? _b : Object]),
     __metadata("design:returntype", void 0)
 ], PhysicalBooksController.prototype, "create", null);
+__decorate([
+    (0, common_1.Post)('bulk'),
+    (0, roles_decorator_1.Roles)(client_1.Role.LIBRARIAN, client_1.Role.ADMIN),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [typeof (_c = typeof bulk_physical_book_dto_1.BulkPhysicalBookDto !== "undefined" && bulk_physical_book_dto_1.BulkPhysicalBookDto) === "function" ? _c : Object]),
+    __metadata("design:returntype", void 0)
+], PhysicalBooksController.prototype, "bulk", null);
+__decorate([
+    (0, common_1.Post)('bulk-delete'),
+    (0, roles_decorator_1.Roles)(client_1.Role.LIBRARIAN, client_1.Role.ADMIN),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [typeof (_d = typeof bulk_ids_dto_1.BulkIdsDto !== "undefined" && bulk_ids_dto_1.BulkIdsDto) === "function" ? _d : Object]),
+    __metadata("design:returntype", void 0)
+], PhysicalBooksController.prototype, "bulkDelete", null);
 __decorate([
     (0, common_1.Get)(),
     (0, roles_decorator_1.Roles)(client_1.Role.LIBRARIAN, client_1.Role.ADMIN),
@@ -3892,7 +4108,7 @@ __decorate([
     __param(0, (0, common_1.Param)('id')),
     __param(1, (0, common_1.Body)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, typeof (_c = typeof update_physical_book_dto_1.UpdatePhysicalBookDto !== "undefined" && update_physical_book_dto_1.UpdatePhysicalBookDto) === "function" ? _c : Object]),
+    __metadata("design:paramtypes", [String, typeof (_e = typeof update_physical_book_dto_1.UpdatePhysicalBookDto !== "undefined" && update_physical_book_dto_1.UpdatePhysicalBookDto) === "function" ? _e : Object]),
     __metadata("design:returntype", void 0)
 ], PhysicalBooksController.prototype, "update", null);
 __decorate([
@@ -3911,7 +4127,7 @@ exports.PhysicalBooksController = PhysicalBooksController = __decorate([
 
 
 /***/ }),
-/* 60 */
+/* 62 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -3926,7 +4142,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.CreatePhysicalBookDto = void 0;
-const class_transformer_1 = __webpack_require__(53);
+const class_transformer_1 = __webpack_require__(45);
 const class_validator_1 = __webpack_require__(19);
 class CreatePhysicalBookDto {
 }
@@ -4057,21 +4273,60 @@ __decorate([
 
 
 /***/ }),
-/* 61 */
+/* 63 */
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.UpdatePhysicalBookDto = void 0;
-const swagger_1 = __webpack_require__(51);
-const create_physical_book_dto_1 = __webpack_require__(60);
+const swagger_1 = __webpack_require__(54);
+const create_physical_book_dto_1 = __webpack_require__(62);
 class UpdatePhysicalBookDto extends (0, swagger_1.PartialType)(create_physical_book_dto_1.CreatePhysicalBookDto) {
 }
 exports.UpdatePhysicalBookDto = UpdatePhysicalBookDto;
 
 
 /***/ }),
-/* 62 */
+/* 64 */
+/***/ (function(__unused_webpack_module, exports, __webpack_require__) {
+
+
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.BulkPhysicalBookDto = exports.BulkPhysicalBookRecordDto = void 0;
+const class_transformer_1 = __webpack_require__(45);
+const class_validator_1 = __webpack_require__(19);
+const update_physical_book_dto_1 = __webpack_require__(63);
+class BulkPhysicalBookRecordDto extends update_physical_book_dto_1.UpdatePhysicalBookDto {
+}
+exports.BulkPhysicalBookRecordDto = BulkPhysicalBookRecordDto;
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)({ message: 'El ID del registro debe ser una cadena de texto' }),
+    __metadata("design:type", String)
+], BulkPhysicalBookRecordDto.prototype, "id", void 0);
+class BulkPhysicalBookDto {
+}
+exports.BulkPhysicalBookDto = BulkPhysicalBookDto;
+__decorate([
+    (0, class_validator_1.IsArray)({ message: 'Los registros deben ser un arreglo' }),
+    (0, class_validator_1.ArrayNotEmpty)({ message: 'Debes incluir al menos un registro' }),
+    (0, class_validator_1.ValidateNested)({ each: true }),
+    (0, class_transformer_1.Type)(() => BulkPhysicalBookRecordDto),
+    __metadata("design:type", Array)
+], BulkPhysicalBookDto.prototype, "records", void 0);
+
+
+/***/ }),
+/* 65 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -4084,8 +4339,8 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.CategoryModule = void 0;
 const common_1 = __webpack_require__(3);
-const category_service_1 = __webpack_require__(63);
-const category_controller_1 = __webpack_require__(64);
+const category_service_1 = __webpack_require__(66);
+const category_controller_1 = __webpack_require__(67);
 let CategoryModule = class CategoryModule {
 };
 exports.CategoryModule = CategoryModule;
@@ -4098,7 +4353,7 @@ exports.CategoryModule = CategoryModule = __decorate([
 
 
 /***/ }),
-/* 63 */
+/* 66 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -4115,7 +4370,7 @@ var _a;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.CategoryService = void 0;
 const common_1 = __webpack_require__(3);
-const prisma_service_1 = __webpack_require__(46);
+const prisma_service_1 = __webpack_require__(49);
 let CategoryService = class CategoryService {
     constructor(prisma) {
         this.prisma = prisma;
@@ -4166,7 +4421,7 @@ exports.CategoryService = CategoryService = __decorate([
 
 
 /***/ }),
-/* 64 */
+/* 67 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -4186,9 +4441,9 @@ var _a, _b, _c;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.CategoryController = void 0;
 const common_1 = __webpack_require__(3);
-const category_service_1 = __webpack_require__(63);
-const create_category_dto_1 = __webpack_require__(65);
-const update_category_dto_1 = __webpack_require__(66);
+const category_service_1 = __webpack_require__(66);
+const create_category_dto_1 = __webpack_require__(68);
+const update_category_dto_1 = __webpack_require__(69);
 let CategoryController = class CategoryController {
     constructor(categoryService) {
         this.categoryService = categoryService;
@@ -4253,7 +4508,7 @@ exports.CategoryController = CategoryController = __decorate([
 
 
 /***/ }),
-/* 65 */
+/* 68 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -4281,21 +4536,21 @@ __decorate([
 
 
 /***/ }),
-/* 66 */
+/* 69 */
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.UpdateCategoryDto = void 0;
-const swagger_1 = __webpack_require__(51);
-const create_category_dto_1 = __webpack_require__(65);
+const swagger_1 = __webpack_require__(54);
+const create_category_dto_1 = __webpack_require__(68);
 class UpdateCategoryDto extends (0, swagger_1.PartialType)(create_category_dto_1.CreateCategoryDto) {
 }
 exports.UpdateCategoryDto = UpdateCategoryDto;
 
 
 /***/ }),
-/* 67 */
+/* 70 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -4308,8 +4563,8 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.AuthorModule = void 0;
 const common_1 = __webpack_require__(3);
-const author_service_1 = __webpack_require__(68);
-const author_controller_1 = __webpack_require__(69);
+const author_service_1 = __webpack_require__(71);
+const author_controller_1 = __webpack_require__(72);
 let AuthorModule = class AuthorModule {
 };
 exports.AuthorModule = AuthorModule;
@@ -4322,7 +4577,7 @@ exports.AuthorModule = AuthorModule = __decorate([
 
 
 /***/ }),
-/* 68 */
+/* 71 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -4339,7 +4594,7 @@ var _a;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.AuthorService = void 0;
 const common_1 = __webpack_require__(3);
-const prisma_service_1 = __webpack_require__(46);
+const prisma_service_1 = __webpack_require__(49);
 let AuthorService = class AuthorService {
     constructor(prisma) {
         this.prisma = prisma;
@@ -4396,7 +4651,7 @@ exports.AuthorService = AuthorService = __decorate([
 
 
 /***/ }),
-/* 69 */
+/* 72 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -4416,9 +4671,9 @@ var _a, _b, _c;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.AuthorController = void 0;
 const common_1 = __webpack_require__(3);
-const author_service_1 = __webpack_require__(68);
-const create_author_dto_1 = __webpack_require__(70);
-const update_author_dto_1 = __webpack_require__(71);
+const author_service_1 = __webpack_require__(71);
+const create_author_dto_1 = __webpack_require__(73);
+const update_author_dto_1 = __webpack_require__(74);
 let AuthorController = class AuthorController {
     constructor(authorService) {
         this.authorService = authorService;
@@ -4483,7 +4738,7 @@ exports.AuthorController = AuthorController = __decorate([
 
 
 /***/ }),
-/* 70 */
+/* 73 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -4510,21 +4765,21 @@ __decorate([
 
 
 /***/ }),
-/* 71 */
+/* 74 */
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.UpdateAuthorDto = void 0;
-const swagger_1 = __webpack_require__(51);
-const create_author_dto_1 = __webpack_require__(70);
+const swagger_1 = __webpack_require__(54);
+const create_author_dto_1 = __webpack_require__(73);
 class UpdateAuthorDto extends (0, swagger_1.PartialType)(create_author_dto_1.CreateAuthorDto) {
 }
 exports.UpdateAuthorDto = UpdateAuthorDto;
 
 
 /***/ }),
-/* 72 */
+/* 75 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -4537,8 +4792,8 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.PnfModule = void 0;
 const common_1 = __webpack_require__(3);
-const pnf_controller_1 = __webpack_require__(73);
-const pnf_service_1 = __webpack_require__(76);
+const pnf_controller_1 = __webpack_require__(76);
+const pnf_service_1 = __webpack_require__(79);
 let PnfModule = class PnfModule {
 };
 exports.PnfModule = PnfModule;
@@ -4551,7 +4806,7 @@ exports.PnfModule = PnfModule = __decorate([
 
 
 /***/ }),
-/* 73 */
+/* 76 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -4571,9 +4826,9 @@ var _a, _b, _c;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.PnfController = void 0;
 const common_1 = __webpack_require__(3);
-const create_pnf_dto_1 = __webpack_require__(74);
-const update_pnf_dto_1 = __webpack_require__(75);
-const pnf_service_1 = __webpack_require__(76);
+const create_pnf_dto_1 = __webpack_require__(77);
+const update_pnf_dto_1 = __webpack_require__(78);
+const pnf_service_1 = __webpack_require__(79);
 let PnfController = class PnfController {
     constructor(pnfService) {
         this.pnfService = pnfService;
@@ -4638,7 +4893,7 @@ exports.PnfController = PnfController = __decorate([
 
 
 /***/ }),
-/* 74 */
+/* 77 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -4666,21 +4921,21 @@ __decorate([
 
 
 /***/ }),
-/* 75 */
+/* 78 */
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.UpdatePnfDto = void 0;
-const swagger_1 = __webpack_require__(51);
-const create_pnf_dto_1 = __webpack_require__(74);
+const swagger_1 = __webpack_require__(54);
+const create_pnf_dto_1 = __webpack_require__(77);
 class UpdatePnfDto extends (0, swagger_1.PartialType)(create_pnf_dto_1.CreatePnfDto) {
 }
 exports.UpdatePnfDto = UpdatePnfDto;
 
 
 /***/ }),
-/* 76 */
+/* 79 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -4697,7 +4952,7 @@ var _a;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.PnfService = void 0;
 const common_1 = __webpack_require__(3);
-const prisma_service_1 = __webpack_require__(46);
+const prisma_service_1 = __webpack_require__(49);
 const pnf_1 = __webpack_require__(38);
 let PnfService = class PnfService {
     constructor(prisma) {
@@ -4757,7 +5012,7 @@ exports.PnfService = PnfService = __decorate([
 
 
 /***/ }),
-/* 77 */
+/* 80 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -4770,8 +5025,8 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.PhysicalBookOperationModule = void 0;
 const common_1 = __webpack_require__(3);
-const physical_book_operation_service_1 = __webpack_require__(78);
-const physical_book_operation_controller_1 = __webpack_require__(79);
+const physical_book_operation_service_1 = __webpack_require__(81);
+const physical_book_operation_controller_1 = __webpack_require__(82);
 let PhysicalBookOperationModule = class PhysicalBookOperationModule {
 };
 exports.PhysicalBookOperationModule = PhysicalBookOperationModule;
@@ -4784,7 +5039,7 @@ exports.PhysicalBookOperationModule = PhysicalBookOperationModule = __decorate([
 
 
 /***/ }),
-/* 78 */
+/* 81 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -4802,8 +5057,9 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.PhysicalBookOperationService = void 0;
 const common_1 = __webpack_require__(3);
 const client_1 = __webpack_require__(7);
-const prisma_service_1 = __webpack_require__(46);
-const copies_1 = __webpack_require__(48);
+const prisma_service_1 = __webpack_require__(49);
+const copies_1 = __webpack_require__(51);
+const bulk_1 = __webpack_require__(39);
 let PhysicalBookOperationService = class PhysicalBookOperationService {
     constructor(prisma) {
         this.prisma = prisma;
@@ -5077,8 +5333,32 @@ let PhysicalBookOperationService = class PhysicalBookOperationService {
     update(id, updatePhysicalBookOperationDto) {
         return `This action updates a #${id} physicalBookOperation`;
     }
-    remove(id) {
-        return `This action removes a #${id} physicalBookOperation`;
+    isDeletable(operation) {
+        return operation.type !== client_1.OperationType.PRESTAMO || operation.wasSettled === true;
+    }
+    async remove(id) {
+        const operation = await this.prisma.bookOperation.findUnique({ where: { id } });
+        if (!operation)
+            throw new common_1.HttpException('Operación no encontrada', common_1.HttpStatus.NOT_FOUND);
+        if (!this.isDeletable(operation)) {
+            throw new common_1.BadRequestException('No puedes eliminar un préstamo que no se ha devuelto. Líquidalo primero.');
+        }
+        await this.prisma.bookOperation.delete({ where: { id } });
+        return { status: 'success', message: 'Operación eliminada' };
+    }
+    async removeMany(ids) {
+        const operations = await this.prisma.bookOperation.findMany({ where: { id: { in: ids } } });
+        const allowedIds = operations.filter((operation) => this.isDeletable(operation)).map((operation) => operation.id);
+        const refused = operations.length - allowedIds.length;
+        const deleted = allowedIds.length === 0
+            ? 0
+            : (await this.prisma.bookOperation.deleteMany({ where: { id: { in: allowedIds } } })).count;
+        const notFound = ids.length - operations.length;
+        return {
+            status: 'success',
+            message: `${(0, bulk_1.bulkSummaryMessage)({ deleted, failed: notFound })}${refused > 0 ? `. ${refused} préstamo(s) sin devolver se mantuvieron` : ''}`,
+            data: { deleted, refused }
+        };
     }
 };
 exports.PhysicalBookOperationService = PhysicalBookOperationService;
@@ -5089,7 +5369,7 @@ exports.PhysicalBookOperationService = PhysicalBookOperationService = __decorate
 
 
 /***/ }),
-/* 79 */
+/* 82 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -5105,15 +5385,16 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 var __param = (this && this.__param) || function (paramIndex, decorator) {
     return function (target, key) { decorator(target, key, paramIndex); }
 };
-var _a, _b, _c, _d, _e;
+var _a, _b, _c, _d, _e, _f;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.PhysicalBookOperationController = void 0;
 const common_1 = __webpack_require__(3);
-const physical_book_operation_service_1 = __webpack_require__(78);
-const update_physical_book_operation_dto_1 = __webpack_require__(80);
-const entrie_dto_1 = __webpack_require__(82);
-const drop_dto_1 = __webpack_require__(83);
-const loan_dto_1 = __webpack_require__(84);
+const physical_book_operation_service_1 = __webpack_require__(81);
+const update_physical_book_operation_dto_1 = __webpack_require__(83);
+const entrie_dto_1 = __webpack_require__(85);
+const drop_dto_1 = __webpack_require__(86);
+const loan_dto_1 = __webpack_require__(87);
+const bulk_ids_dto_1 = __webpack_require__(44);
 const roles_decorator_1 = __webpack_require__(31);
 const client_1 = __webpack_require__(7);
 const jwt_auth_guard_1 = __webpack_require__(25);
@@ -5141,6 +5422,9 @@ let PhysicalBookOperationController = class PhysicalBookOperationController {
     findAllLoans(query) {
         return this.physicalBookOperationService.findAllLoans(query);
     }
+    bulkDelete(bulkIdsDto) {
+        return this.physicalBookOperationService.removeMany(bulkIdsDto.ids);
+    }
     findOne(id) {
         return this.physicalBookOperationService.findOne(+id);
     }
@@ -5148,7 +5432,7 @@ let PhysicalBookOperationController = class PhysicalBookOperationController {
         return this.physicalBookOperationService.update(+id, updatePhysicalBookOperationDto);
     }
     remove(id) {
-        return this.physicalBookOperationService.remove(+id);
+        return this.physicalBookOperationService.remove(id);
     }
 };
 exports.PhysicalBookOperationController = PhysicalBookOperationController;
@@ -5208,6 +5492,15 @@ __decorate([
     __metadata("design:returntype", void 0)
 ], PhysicalBookOperationController.prototype, "findAllLoans", null);
 __decorate([
+    (0, common_1.Post)('bulk-delete'),
+    (0, roles_decorator_1.Roles)(client_1.Role.LIBRARIAN, client_1.Role.ADMIN),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [typeof (_e = typeof bulk_ids_dto_1.BulkIdsDto !== "undefined" && bulk_ids_dto_1.BulkIdsDto) === "function" ? _e : Object]),
+    __metadata("design:returntype", void 0)
+], PhysicalBookOperationController.prototype, "bulkDelete", null);
+__decorate([
     (0, common_1.Get)(':id'),
     (0, roles_decorator_1.Roles)(client_1.Role.LIBRARIAN, client_1.Role.ADMIN),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
@@ -5223,7 +5516,7 @@ __decorate([
     __param(0, (0, common_1.Param)('id')),
     __param(1, (0, common_1.Body)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, typeof (_e = typeof update_physical_book_operation_dto_1.UpdatePhysicalBookOperationDto !== "undefined" && update_physical_book_operation_dto_1.UpdatePhysicalBookOperationDto) === "function" ? _e : Object]),
+    __metadata("design:paramtypes", [String, typeof (_f = typeof update_physical_book_operation_dto_1.UpdatePhysicalBookOperationDto !== "undefined" && update_physical_book_operation_dto_1.UpdatePhysicalBookOperationDto) === "function" ? _f : Object]),
     __metadata("design:returntype", void 0)
 ], PhysicalBookOperationController.prototype, "update", null);
 __decorate([
@@ -5242,21 +5535,21 @@ exports.PhysicalBookOperationController = PhysicalBookOperationController = __de
 
 
 /***/ }),
-/* 80 */
+/* 83 */
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.UpdatePhysicalBookOperationDto = void 0;
-const swagger_1 = __webpack_require__(51);
-const create_physical_book_operation_dto_1 = __webpack_require__(81);
+const swagger_1 = __webpack_require__(54);
+const create_physical_book_operation_dto_1 = __webpack_require__(84);
 class UpdatePhysicalBookOperationDto extends (0, swagger_1.PartialType)(create_physical_book_operation_dto_1.CreatePhysicalBookOperationDto) {
 }
 exports.UpdatePhysicalBookOperationDto = UpdatePhysicalBookOperationDto;
 
 
 /***/ }),
-/* 81 */
+/* 84 */
 /***/ ((__unused_webpack_module, exports) => {
 
 
@@ -5268,7 +5561,7 @@ exports.CreatePhysicalBookOperationDto = CreatePhysicalBookOperationDto;
 
 
 /***/ }),
-/* 82 */
+/* 85 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -5283,7 +5576,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.EntrieDto = void 0;
-const class_transformer_1 = __webpack_require__(53);
+const class_transformer_1 = __webpack_require__(45);
 const class_validator_1 = __webpack_require__(19);
 class EntrieDto {
 }
@@ -5329,7 +5622,7 @@ __decorate([
 
 
 /***/ }),
-/* 83 */
+/* 86 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -5344,8 +5637,8 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.DropDto = void 0;
-const swagger_1 = __webpack_require__(51);
-const entrie_dto_1 = __webpack_require__(82);
+const swagger_1 = __webpack_require__(54);
+const entrie_dto_1 = __webpack_require__(85);
 const class_validator_1 = __webpack_require__(19);
 class DropDto extends (0, swagger_1.PartialType)(entrie_dto_1.EntrieDto) {
 }
@@ -5357,7 +5650,7 @@ __decorate([
 
 
 /***/ }),
-/* 84 */
+/* 87 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -5372,7 +5665,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.LoanDto = void 0;
-const class_transformer_1 = __webpack_require__(53);
+const class_transformer_1 = __webpack_require__(45);
 const class_validator_1 = __webpack_require__(19);
 class LoanDto {
 }
@@ -5421,7 +5714,7 @@ __decorate([
 
 
 /***/ }),
-/* 85 */
+/* 88 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -5434,8 +5727,8 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.ItemTypeModule = void 0;
 const common_1 = __webpack_require__(3);
-const item_type_service_1 = __webpack_require__(86);
-const item_type_controller_1 = __webpack_require__(87);
+const item_type_service_1 = __webpack_require__(89);
+const item_type_controller_1 = __webpack_require__(90);
 let ItemTypeModule = class ItemTypeModule {
 };
 exports.ItemTypeModule = ItemTypeModule;
@@ -5448,7 +5741,7 @@ exports.ItemTypeModule = ItemTypeModule = __decorate([
 
 
 /***/ }),
-/* 86 */
+/* 89 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -5465,7 +5758,7 @@ var _a;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.ItemTypeService = void 0;
 const common_1 = __webpack_require__(3);
-const prisma_service_1 = __webpack_require__(46);
+const prisma_service_1 = __webpack_require__(49);
 let ItemTypeService = class ItemTypeService {
     constructor(prisma) {
         this.prisma = prisma;
@@ -5500,7 +5793,7 @@ exports.ItemTypeService = ItemTypeService = __decorate([
 
 
 /***/ }),
-/* 87 */
+/* 90 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -5520,9 +5813,9 @@ var _a, _b, _c;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.ItemTypeController = void 0;
 const common_1 = __webpack_require__(3);
-const item_type_service_1 = __webpack_require__(86);
-const create_item_type_dto_1 = __webpack_require__(88);
-const update_item_type_dto_1 = __webpack_require__(89);
+const item_type_service_1 = __webpack_require__(89);
+const create_item_type_dto_1 = __webpack_require__(91);
+const update_item_type_dto_1 = __webpack_require__(92);
 let ItemTypeController = class ItemTypeController {
     constructor(itemTypeService) {
         this.itemTypeService = itemTypeService;
@@ -5587,7 +5880,7 @@ exports.ItemTypeController = ItemTypeController = __decorate([
 
 
 /***/ }),
-/* 88 */
+/* 91 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -5614,21 +5907,21 @@ __decorate([
 
 
 /***/ }),
-/* 89 */
+/* 92 */
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.UpdateItemTypeDto = void 0;
-const swagger_1 = __webpack_require__(51);
-const create_item_type_dto_1 = __webpack_require__(88);
+const swagger_1 = __webpack_require__(54);
+const create_item_type_dto_1 = __webpack_require__(91);
 class UpdateItemTypeDto extends (0, swagger_1.PartialType)(create_item_type_dto_1.CreateItemTypeDto) {
 }
 exports.UpdateItemTypeDto = UpdateItemTypeDto;
 
 
 /***/ }),
-/* 90 */
+/* 93 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -5641,8 +5934,8 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.InventoryOperationModule = void 0;
 const common_1 = __webpack_require__(3);
-const inventory_operation_service_1 = __webpack_require__(91);
-const inventory_operation_controller_1 = __webpack_require__(92);
+const inventory_operation_service_1 = __webpack_require__(94);
+const inventory_operation_controller_1 = __webpack_require__(95);
 let InventoryOperationModule = class InventoryOperationModule {
 };
 exports.InventoryOperationModule = InventoryOperationModule;
@@ -5655,7 +5948,7 @@ exports.InventoryOperationModule = InventoryOperationModule = __decorate([
 
 
 /***/ }),
-/* 91 */
+/* 94 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -5673,8 +5966,9 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.InventoryOperationService = void 0;
 const common_1 = __webpack_require__(3);
 const client_1 = __webpack_require__(7);
-const prisma_service_1 = __webpack_require__(46);
-const copies_1 = __webpack_require__(48);
+const prisma_service_1 = __webpack_require__(49);
+const copies_1 = __webpack_require__(51);
+const bulk_1 = __webpack_require__(39);
 let InventoryOperationService = class InventoryOperationService {
     constructor(prisma) {
         this.prisma = prisma;
@@ -5914,8 +6208,32 @@ let InventoryOperationService = class InventoryOperationService {
     update(id, updateInventoryOperationDto) {
         return `This action updates a #${id} inventoryOperation`;
     }
-    remove(id) {
-        return `This action removes a #${id} inventoryOperation`;
+    isDeletable(operation) {
+        return operation.type !== client_1.OperationType.PRESTAMO || operation.wasSettled === true;
+    }
+    async remove(id) {
+        const operation = await this.prisma.itemOperation.findUnique({ where: { id } });
+        if (!operation)
+            throw new common_1.HttpException('Operación no encontrada', common_1.HttpStatus.NOT_FOUND);
+        if (!this.isDeletable(operation)) {
+            throw new common_1.BadRequestException('No puedes eliminar un préstamo que no se ha devuelto. Líquidalo primero.');
+        }
+        await this.prisma.itemOperation.delete({ where: { id } });
+        return { status: 'success', message: 'Operación eliminada' };
+    }
+    async removeMany(ids) {
+        const operations = await this.prisma.itemOperation.findMany({ where: { id: { in: ids } } });
+        const allowedIds = operations.filter((operation) => this.isDeletable(operation)).map((operation) => operation.id);
+        const refused = operations.length - allowedIds.length;
+        const deleted = allowedIds.length === 0
+            ? 0
+            : (await this.prisma.itemOperation.deleteMany({ where: { id: { in: allowedIds } } })).count;
+        const notFound = ids.length - operations.length;
+        return {
+            status: 'success',
+            message: `${(0, bulk_1.bulkSummaryMessage)({ deleted, failed: notFound })}${refused > 0 ? `. ${refused} préstamo(s) sin devolver se mantuvieron` : ''}`,
+            data: { deleted, refused }
+        };
     }
 };
 exports.InventoryOperationService = InventoryOperationService;
@@ -5926,7 +6244,7 @@ exports.InventoryOperationService = InventoryOperationService = __decorate([
 
 
 /***/ }),
-/* 92 */
+/* 95 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -5942,16 +6260,17 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 var __param = (this && this.__param) || function (paramIndex, decorator) {
     return function (target, key) { decorator(target, key, paramIndex); }
 };
-var _a, _b, _c, _d, _e, _f;
+var _a, _b, _c, _d, _e, _f, _g;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.InventoryOperationController = void 0;
 const common_1 = __webpack_require__(3);
-const inventory_operation_service_1 = __webpack_require__(91);
-const create_inventory_operation_dto_1 = __webpack_require__(93);
-const update_inventory_operation_dto_1 = __webpack_require__(94);
-const entrie_dto_1 = __webpack_require__(95);
-const drop_dto_1 = __webpack_require__(96);
-const loan_dto_1 = __webpack_require__(97);
+const inventory_operation_service_1 = __webpack_require__(94);
+const create_inventory_operation_dto_1 = __webpack_require__(96);
+const update_inventory_operation_dto_1 = __webpack_require__(97);
+const entrie_dto_1 = __webpack_require__(98);
+const drop_dto_1 = __webpack_require__(99);
+const bulk_ids_dto_1 = __webpack_require__(44);
+const loan_dto_1 = __webpack_require__(100);
 const client_1 = __webpack_require__(7);
 const jwt_auth_guard_1 = __webpack_require__(25);
 const roles_decorator_1 = __webpack_require__(31);
@@ -5981,6 +6300,9 @@ let InventoryOperationController = class InventoryOperationController {
     findAll(query) {
         return this.inventoryOperationService.findAll(query);
     }
+    bulkDelete(bulkIdsDto) {
+        return this.inventoryOperationService.removeMany(bulkIdsDto.ids);
+    }
     findOne(id) {
         return this.inventoryOperationService.findOne(+id);
     }
@@ -5988,7 +6310,7 @@ let InventoryOperationController = class InventoryOperationController {
         return this.inventoryOperationService.update(+id, updateInventoryOperationDto);
     }
     remove(id) {
-        return this.inventoryOperationService.remove(+id);
+        return this.inventoryOperationService.remove(id);
     }
 };
 exports.InventoryOperationController = InventoryOperationController;
@@ -6056,6 +6378,15 @@ __decorate([
     __metadata("design:returntype", void 0)
 ], InventoryOperationController.prototype, "findAll", null);
 __decorate([
+    (0, common_1.Post)('bulk-delete'),
+    (0, roles_decorator_1.Roles)(client_1.Role.LIBRARIAN, client_1.Role.ADMIN),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [typeof (_f = typeof bulk_ids_dto_1.BulkIdsDto !== "undefined" && bulk_ids_dto_1.BulkIdsDto) === "function" ? _f : Object]),
+    __metadata("design:returntype", void 0)
+], InventoryOperationController.prototype, "bulkDelete", null);
+__decorate([
     (0, common_1.Get)(':id'),
     (0, roles_decorator_1.Roles)(client_1.Role.LIBRARIAN, client_1.Role.ADMIN),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
@@ -6071,7 +6402,7 @@ __decorate([
     __param(0, (0, common_1.Param)('id')),
     __param(1, (0, common_1.Body)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, typeof (_f = typeof update_inventory_operation_dto_1.UpdateInventoryOperationDto !== "undefined" && update_inventory_operation_dto_1.UpdateInventoryOperationDto) === "function" ? _f : Object]),
+    __metadata("design:paramtypes", [String, typeof (_g = typeof update_inventory_operation_dto_1.UpdateInventoryOperationDto !== "undefined" && update_inventory_operation_dto_1.UpdateInventoryOperationDto) === "function" ? _g : Object]),
     __metadata("design:returntype", void 0)
 ], InventoryOperationController.prototype, "update", null);
 __decorate([
@@ -6090,7 +6421,7 @@ exports.InventoryOperationController = InventoryOperationController = __decorate
 
 
 /***/ }),
-/* 93 */
+/* 96 */
 /***/ ((__unused_webpack_module, exports) => {
 
 
@@ -6102,21 +6433,21 @@ exports.CreateInventoryOperationDto = CreateInventoryOperationDto;
 
 
 /***/ }),
-/* 94 */
+/* 97 */
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.UpdateInventoryOperationDto = void 0;
-const swagger_1 = __webpack_require__(51);
-const create_inventory_operation_dto_1 = __webpack_require__(93);
+const swagger_1 = __webpack_require__(54);
+const create_inventory_operation_dto_1 = __webpack_require__(96);
 class UpdateInventoryOperationDto extends (0, swagger_1.PartialType)(create_inventory_operation_dto_1.CreateInventoryOperationDto) {
 }
 exports.UpdateInventoryOperationDto = UpdateInventoryOperationDto;
 
 
 /***/ }),
-/* 95 */
+/* 98 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -6131,7 +6462,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.EntrieDto = void 0;
-const class_transformer_1 = __webpack_require__(53);
+const class_transformer_1 = __webpack_require__(45);
 const class_validator_1 = __webpack_require__(19);
 class EntrieDto {
 }
@@ -6167,7 +6498,7 @@ __decorate([
 
 
 /***/ }),
-/* 96 */
+/* 99 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -6182,8 +6513,8 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.DropDto = void 0;
-const swagger_1 = __webpack_require__(51);
-const entrie_dto_1 = __webpack_require__(95);
+const swagger_1 = __webpack_require__(54);
+const entrie_dto_1 = __webpack_require__(98);
 const class_validator_1 = __webpack_require__(19);
 class DropDto extends (0, swagger_1.PartialType)(entrie_dto_1.EntrieDto) {
 }
@@ -6195,7 +6526,7 @@ __decorate([
 
 
 /***/ }),
-/* 97 */
+/* 100 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -6210,7 +6541,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.LoanDto = void 0;
-const class_transformer_1 = __webpack_require__(53);
+const class_transformer_1 = __webpack_require__(45);
 const class_validator_1 = __webpack_require__(19);
 class LoanDto {
 }
@@ -6259,7 +6590,7 @@ __decorate([
 
 
 /***/ }),
-/* 98 */
+/* 101 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -6272,9 +6603,9 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.LogsModule = void 0;
 const common_1 = __webpack_require__(3);
-const logs_service_1 = __webpack_require__(99);
-const logs_controller_1 = __webpack_require__(100);
-const prisma_module_1 = __webpack_require__(103);
+const logs_service_1 = __webpack_require__(102);
+const logs_controller_1 = __webpack_require__(103);
+const prisma_module_1 = __webpack_require__(106);
 let LogsModule = class LogsModule {
 };
 exports.LogsModule = LogsModule;
@@ -6288,7 +6619,7 @@ exports.LogsModule = LogsModule = __decorate([
 
 
 /***/ }),
-/* 99 */
+/* 102 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -6306,7 +6637,7 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.LogsService = void 0;
 const common_1 = __webpack_require__(3);
 const getPagination_1 = __webpack_require__(16);
-const prisma_service_1 = __webpack_require__(46);
+const prisma_service_1 = __webpack_require__(49);
 let LogsService = class LogsService {
     constructor(prisma) {
         this.prisma = prisma;
@@ -6343,7 +6674,7 @@ exports.LogsService = LogsService = __decorate([
 
 
 /***/ }),
-/* 100 */
+/* 103 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -6363,9 +6694,9 @@ var _a, _b, _c;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.LogsController = void 0;
 const common_1 = __webpack_require__(3);
-const logs_service_1 = __webpack_require__(99);
-const create_log_dto_1 = __webpack_require__(101);
-const update_log_dto_1 = __webpack_require__(102);
+const logs_service_1 = __webpack_require__(102);
+const create_log_dto_1 = __webpack_require__(104);
+const update_log_dto_1 = __webpack_require__(105);
 let LogsController = class LogsController {
     constructor(logsService) {
         this.logsService = logsService;
@@ -6430,7 +6761,7 @@ exports.LogsController = LogsController = __decorate([
 
 
 /***/ }),
-/* 101 */
+/* 104 */
 /***/ ((__unused_webpack_module, exports) => {
 
 
@@ -6442,27 +6773,27 @@ exports.CreateLogDto = CreateLogDto;
 
 
 /***/ }),
-/* 102 */
+/* 105 */
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.UpdateLogDto = void 0;
-const swagger_1 = __webpack_require__(51);
-const create_log_dto_1 = __webpack_require__(101);
+const swagger_1 = __webpack_require__(54);
+const create_log_dto_1 = __webpack_require__(104);
 class UpdateLogDto extends (0, swagger_1.PartialType)(create_log_dto_1.CreateLogDto) {
 }
 exports.UpdateLogDto = UpdateLogDto;
 
 
 /***/ }),
-/* 103 */
+/* 106 */
 /***/ ((module) => {
 
 module.exports = require("prisma/prisma.module");
 
 /***/ }),
-/* 104 */
+/* 107 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -6475,8 +6806,8 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.BackupModule = void 0;
 const common_1 = __webpack_require__(3);
-const backup_service_1 = __webpack_require__(105);
-const backup_controller_1 = __webpack_require__(107);
+const backup_service_1 = __webpack_require__(108);
+const backup_controller_1 = __webpack_require__(110);
 let BackupModule = class BackupModule {
 };
 exports.BackupModule = BackupModule;
@@ -6489,7 +6820,7 @@ exports.BackupModule = BackupModule = __decorate([
 
 
 /***/ }),
-/* 105 */
+/* 108 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -6540,7 +6871,7 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.BackupService = void 0;
 const common_1 = __webpack_require__(3);
 const prisma_service_1 = __webpack_require__(6);
-const zlib = __importStar(__webpack_require__(106));
+const zlib = __importStar(__webpack_require__(109));
 let BackupService = class BackupService {
     constructor(prisma) {
         this.prisma = prisma;
@@ -6582,13 +6913,13 @@ exports.BackupService = BackupService = __decorate([
 
 
 /***/ }),
-/* 106 */
+/* 109 */
 /***/ ((module) => {
 
 module.exports = require("zlib");
 
 /***/ }),
-/* 107 */
+/* 110 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -6609,7 +6940,7 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.BackupController = void 0;
 const common_1 = __webpack_require__(3);
 const express_1 = __webpack_require__(24);
-const backup_service_1 = __webpack_require__(105);
+const backup_service_1 = __webpack_require__(108);
 let BackupController = class BackupController {
     constructor(backupService) {
         this.backupService = backupService;
@@ -6640,7 +6971,7 @@ exports.BackupController = BackupController = __decorate([
 
 
 /***/ }),
-/* 108 */
+/* 111 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -6653,8 +6984,8 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.SyncModule = void 0;
 const common_1 = __webpack_require__(3);
-const sync_service_1 = __webpack_require__(109);
-const sync_controller_1 = __webpack_require__(110);
+const sync_service_1 = __webpack_require__(112);
+const sync_controller_1 = __webpack_require__(113);
 let SyncModule = class SyncModule {
 };
 exports.SyncModule = SyncModule;
@@ -6667,7 +6998,7 @@ exports.SyncModule = SyncModule = __decorate([
 
 
 /***/ }),
-/* 109 */
+/* 112 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -7028,7 +7359,7 @@ exports.SyncService = SyncService = SyncService_1 = __decorate([
 
 
 /***/ }),
-/* 110 */
+/* 113 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -7048,8 +7379,8 @@ var _a;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.SyncController = void 0;
 const common_1 = __webpack_require__(3);
-const sync_service_1 = __webpack_require__(109);
-const sync_token_guard_1 = __webpack_require__(111);
+const sync_service_1 = __webpack_require__(112);
+const sync_token_guard_1 = __webpack_require__(114);
 let SyncController = class SyncController {
     constructor(syncService) {
         this.syncService = syncService;
@@ -7092,7 +7423,7 @@ exports.SyncController = SyncController = __decorate([
 
 
 /***/ }),
-/* 111 */
+/* 114 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -7105,7 +7436,7 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.SyncTokenGuard = void 0;
 const common_1 = __webpack_require__(3);
-const crypto_1 = __webpack_require__(112);
+const crypto_1 = __webpack_require__(115);
 let SyncTokenGuard = class SyncTokenGuard {
     canActivate(context) {
         const expected = process.env.SYNC_TOKEN;
@@ -7133,13 +7464,13 @@ exports.SyncTokenGuard = SyncTokenGuard = __decorate([
 
 
 /***/ }),
-/* 112 */
+/* 115 */
 /***/ ((module) => {
 
 module.exports = require("crypto");
 
 /***/ }),
-/* 113 */
+/* 116 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -7152,10 +7483,10 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.AiBooksModule = void 0;
 const common_1 = __webpack_require__(3);
-const ai_books_service_1 = __webpack_require__(114);
-const ai_books_controller_1 = __webpack_require__(119);
+const ai_books_service_1 = __webpack_require__(117);
+const ai_books_controller_1 = __webpack_require__(122);
 const config_1 = __webpack_require__(4);
-const bulk_books_service_1 = __webpack_require__(43);
+const bulk_books_service_1 = __webpack_require__(46);
 const books_service_1 = __webpack_require__(37);
 let AiBooksModule = class AiBooksModule {
 };
@@ -7172,7 +7503,7 @@ exports.AiBooksModule = AiBooksModule = __decorate([
 
 
 /***/ }),
-/* 114 */
+/* 117 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -7190,11 +7521,11 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.AiBooksService = void 0;
 const common_1 = __webpack_require__(3);
 const config_1 = __webpack_require__(4);
-const groq_1 = __webpack_require__(115);
-const messages_1 = __webpack_require__(116);
+const groq_1 = __webpack_require__(118);
+const messages_1 = __webpack_require__(119);
 const prisma_service_1 = __webpack_require__(6);
-const book_extraction_schema_1 = __webpack_require__(117);
-const book_extraction_schema_2 = __webpack_require__(117);
+const book_extraction_schema_1 = __webpack_require__(120);
+const book_extraction_schema_2 = __webpack_require__(120);
 let AiBooksService = class AiBooksService {
     constructor(configService, prisma) {
         this.configService = configService;
@@ -7301,25 +7632,25 @@ exports.AiBooksService = AiBooksService = __decorate([
 
 
 /***/ }),
-/* 115 */
+/* 118 */
 /***/ ((module) => {
 
 module.exports = require("@langchain/groq");
 
 /***/ }),
-/* 116 */
+/* 119 */
 /***/ ((module) => {
 
 module.exports = require("@langchain/core/messages");
 
 /***/ }),
-/* 117 */
+/* 120 */
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.BulkBookActionSchema = exports.BookExtractionSchema = void 0;
-const zod_1 = __webpack_require__(118);
+const zod_1 = __webpack_require__(121);
 const pnf_1 = __webpack_require__(38);
 const PNF_ENUM = zod_1.z.string().min(3).describe('El Programa Nacional de Formación asociado.');
 const PNF_LIST = zod_1.z.preprocess((val) => (val === null || val === undefined ? [] : Array.isArray(val) ? val.map((item) => (0, pnf_1.normalizePnfName)(item)).filter(Boolean) : val), zod_1.z.array(PNF_ENUM));
@@ -7350,13 +7681,13 @@ exports.BulkBookActionSchema = zod_1.z.object({
 
 
 /***/ }),
-/* 118 */
+/* 121 */
 /***/ ((module) => {
 
 module.exports = require("zod");
 
 /***/ }),
-/* 119 */
+/* 122 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -7376,9 +7707,9 @@ var _a, _b, _c, _d, _e, _f;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.AiBooksController = void 0;
 const common_1 = __webpack_require__(3);
-const platform_express_1 = __webpack_require__(56);
-const ai_books_service_1 = __webpack_require__(114);
-const bulk_books_service_1 = __webpack_require__(43);
+const platform_express_1 = __webpack_require__(58);
+const ai_books_service_1 = __webpack_require__(117);
+const bulk_books_service_1 = __webpack_require__(46);
 const jwt_auth_guard_1 = __webpack_require__(25);
 const roles_guard_1 = __webpack_require__(30);
 const roles_decorator_1 = __webpack_require__(31);
@@ -7438,7 +7769,7 @@ exports.AiBooksController = AiBooksController = __decorate([
 
 
 /***/ }),
-/* 120 */
+/* 123 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -7451,8 +7782,8 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.AiInventoryModule = void 0;
 const common_1 = __webpack_require__(3);
-const ai_inventory_service_1 = __webpack_require__(121);
-const ai_inventory_controller_1 = __webpack_require__(123);
+const ai_inventory_service_1 = __webpack_require__(124);
+const ai_inventory_controller_1 = __webpack_require__(126);
 const config_1 = __webpack_require__(4);
 let AiInventoryModule = class AiInventoryModule {
 };
@@ -7469,7 +7800,7 @@ exports.AiInventoryModule = AiInventoryModule = __decorate([
 
 
 /***/ }),
-/* 121 */
+/* 124 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -7487,9 +7818,9 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.AiInventoryService = void 0;
 const common_1 = __webpack_require__(3);
 const config_1 = __webpack_require__(4);
-const groq_1 = __webpack_require__(115);
-const messages_1 = __webpack_require__(116);
-const inventory_extraction_schema_1 = __webpack_require__(122);
+const groq_1 = __webpack_require__(118);
+const messages_1 = __webpack_require__(119);
+const inventory_extraction_schema_1 = __webpack_require__(125);
 let AiInventoryService = class AiInventoryService {
     constructor(configService) {
         this.configService = configService;
@@ -7553,13 +7884,13 @@ exports.AiInventoryService = AiInventoryService = __decorate([
 
 
 /***/ }),
-/* 122 */
+/* 125 */
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.InventoryExtractionSchema = void 0;
-const zod_1 = __webpack_require__(118);
+const zod_1 = __webpack_require__(121);
 exports.InventoryExtractionSchema = zod_1.z.object({
     message: zod_1.z.string().describe('Un mensaje amigable detallando qué características del item se lograron identificar.'),
     extractedData: zod_1.z.object({
@@ -7573,7 +7904,7 @@ exports.InventoryExtractionSchema = zod_1.z.object({
 
 
 /***/ }),
-/* 123 */
+/* 126 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -7593,7 +7924,7 @@ var _a, _b;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.AiInventoryController = void 0;
 const common_1 = __webpack_require__(3);
-const ai_inventory_service_1 = __webpack_require__(121);
+const ai_inventory_service_1 = __webpack_require__(124);
 let AiInventoryController = class AiInventoryController {
     constructor(aiInventoryService) {
         this.aiInventoryService = aiInventoryService;
@@ -7618,7 +7949,7 @@ exports.AiInventoryController = AiInventoryController = __decorate([
 
 
 /***/ }),
-/* 124 */
+/* 127 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -7631,8 +7962,8 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.AiPhysicalBookModule = void 0;
 const common_1 = __webpack_require__(3);
-const ai_physical_book_service_1 = __webpack_require__(125);
-const ai_physical_book_controller_1 = __webpack_require__(127);
+const ai_physical_book_service_1 = __webpack_require__(128);
+const ai_physical_book_controller_1 = __webpack_require__(130);
 const config_1 = __webpack_require__(4);
 let AiPhysicalBookModule = class AiPhysicalBookModule {
 };
@@ -7647,7 +7978,7 @@ exports.AiPhysicalBookModule = AiPhysicalBookModule = __decorate([
 
 
 /***/ }),
-/* 125 */
+/* 128 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -7665,10 +7996,10 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.AiPhysicalBookService = void 0;
 const common_1 = __webpack_require__(3);
 const config_1 = __webpack_require__(4);
-const groq_1 = __webpack_require__(115);
-const messages_1 = __webpack_require__(116);
+const groq_1 = __webpack_require__(118);
+const messages_1 = __webpack_require__(119);
 const prisma_service_1 = __webpack_require__(6);
-const book_extraction_schema_1 = __webpack_require__(126);
+const book_extraction_schema_1 = __webpack_require__(129);
 const pnf_1 = __webpack_require__(38);
 let AiPhysicalBookService = class AiPhysicalBookService {
     constructor(configService, prisma) {
@@ -7761,13 +8092,13 @@ exports.AiPhysicalBookService = AiPhysicalBookService = __decorate([
 
 
 /***/ }),
-/* 126 */
+/* 129 */
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.BookExtractionSchema = void 0;
-const zod_1 = __webpack_require__(118);
+const zod_1 = __webpack_require__(121);
 const pnf_1 = __webpack_require__(38);
 const PNF_LIST = zod_1.z.preprocess((val) => (val === null || val === undefined ? [] : Array.isArray(val) ? val.map((item) => (0, pnf_1.normalizePnfName)(typeof item === 'string' ? item : item?.name ?? item?.pnf ?? '')).filter(Boolean) : val), zod_1.z.array(zod_1.z.string().min(3).describe('El Programa Nacional de Formación asociado.')));
 exports.BookExtractionSchema = zod_1.z.object({
@@ -7787,7 +8118,7 @@ exports.BookExtractionSchema = zod_1.z.object({
 
 
 /***/ }),
-/* 127 */
+/* 130 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -7807,7 +8138,7 @@ var _a, _b;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.AiPhysicalBookController = void 0;
 const common_1 = __webpack_require__(3);
-const ai_physical_book_service_1 = __webpack_require__(125);
+const ai_physical_book_service_1 = __webpack_require__(128);
 let AiPhysicalBookController = class AiPhysicalBookController {
     constructor(aiBookService) {
         this.aiBookService = aiBookService;
@@ -7836,7 +8167,7 @@ exports.AiPhysicalBookController = AiPhysicalBookController = __decorate([
 
 
 /***/ }),
-/* 128 */
+/* 131 */
 /***/ ((module) => {
 
 module.exports = require("cookie-parser");

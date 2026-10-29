@@ -1,6 +1,8 @@
 import { Injectable, ConflictException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { normalizePnfFilter, resolvePnfIds } from '../utils/pnf';
+import { bulkErrorMessage, bulkSummaryMessage } from '../utils/bulk';
+import { deleteFile } from '../utils/deleteFile';
 
 interface BookCreateInput {
   title: string;
@@ -166,6 +168,55 @@ export class BookService {
     return {
       book: await this.prisma.book.delete({ where: { id } }),
       message: 'Libro Eliminado'
+    };
+  }
+
+  /**
+   * Borrado en lote de libros digitales. Reaprovecha la limpieza del PDF en
+   * Supabase y registra un único movimiento de auditoría para todo el lote.
+   */
+  async deleteMany(ids: number[], req: any) {
+    let deleted = 0;
+    const errors: { id: number; message: string }[] = [];
+
+    for (const id of ids) {
+      try {
+        const book = await this.prisma.book.findFirst({ where: { id } });
+        if (!book) throw new NotFoundException('El libro no existe');
+
+        const bucketName = 'pdfs';
+        if (book.routepdf && book.routepdf.includes(`${bucketName}/`)) {
+          const supabasePath = book.routepdf.split(`${bucketName}/`)[1];
+          if (supabasePath) {
+            try {
+              await deleteFile(supabasePath, 'pdfs');
+            } catch (error) {
+              console.error('No se pudo borrar el archivo en Supabase:', error);
+            }
+          }
+        }
+
+        await this.prisma.bookPnf.deleteMany({ where: { bookId: id } });
+        await this.prisma.savedBook.deleteMany({ where: { bookId: id } });
+        await this.prisma.book.delete({ where: { id } });
+        deleted++;
+      } catch (error: any) {
+        errors.push({ id, message: bulkErrorMessage(error) });
+      }
+    }
+
+    await this.prisma.operation.create({
+      data: {
+        userId: req.user.userId,
+        ip: req.ip,
+        action: `Eliminó ${deleted} libro(s) digital(es) en lote`
+      }
+    });
+
+    return {
+      status: 'success',
+      message: bulkSummaryMessage({ deleted, failed: errors.length }),
+      data: { deleted, errors }
     };
   }
 

@@ -6,6 +6,7 @@ import { MakeLoanDto } from './dto/makeLoan.dto';
 import { EntrieDto } from './dto/entrie-dto';
 import { DropDto } from './dto/drop-dto';
 import { LoanDto } from './dto/loan-dto';
+import { BulkIdsDto } from '../utils/bulk-ids.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Role } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -64,6 +65,13 @@ export class PhysicalBookOperationController {
   }
 
 
+  @Post('bulk-delete')
+  @Roles(Role.LIBRARIAN, Role.ADMIN)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  bulkDelete(@Body() bulkIdsDto: BulkIdsDto) {
+    return this.physicalBookOperationService.removeMany(bulkIdsDto.ids);
+  }
+
   @Get(':id')
   @Roles(Role.LIBRARIAN, Role.ADMIN)
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -82,6 +90,6 @@ export class PhysicalBookOperationController {
   @Roles(Role.LIBRARIAN, Role.ADMIN)
   @UseGuards(JwtAuthGuard, RolesGuard)
   remove(@Param('id') id: string) {
-    return this.physicalBookOperationService.remove(+id);
+    return this.physicalBookOperationService.remove(id);
   }
 }

@@ -5,6 +5,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { Role } from '@prisma/client';
 import { deleteFile } from '../utils/deleteFile';
+import { BulkIntIdsDto } from '../utils/bulk-ids.dto';
 
 @Controller('book')
 export class BookController {
@@ -36,6 +37,14 @@ export class BookController {
 
     console.log('Registrando libro multi-autor y multi-pnf en la BD:', data.title);
     return this.bookService.create(data, req);
+  }
+
+  // 📦 Borrado de uno o varios libros digitales en lote
+  @Post('bulk-delete')
+  @Roles(Role.LIBRARIAN, Role.ADMIN)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  bulkDelete(@Body() bulkIdsDto: BulkIntIdsDto, @Req() req: any) {
+    return this.bookService.deleteMany(bulkIdsDto.ids, req);
   }
 
   @Delete(':id')

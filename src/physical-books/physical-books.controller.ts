@@ -2,6 +2,8 @@ import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards } f
 import { PhysicalBooksService } from './physical-books.service';
 import { CreatePhysicalBookDto } from './dto/create-physical-book.dto';
 import { UpdatePhysicalBookDto } from './dto/update-physical-book.dto';
+import { BulkPhysicalBookDto } from './dto/bulk-physical-book.dto';
+import { BulkIdsDto } from '../utils/bulk-ids.dto';
 import { Role } from '@prisma/client';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -16,6 +18,21 @@ export class PhysicalBooksController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   create(@Body() createPhysicalBookDto: CreatePhysicalBookDto) {
     return this.physicalBooksService.create(createPhysicalBookDto);
+  }
+
+  // 📦 Inserción o edición de uno o varios registros en lote
+  @Post('bulk')
+  @Roles(Role.LIBRARIAN, Role.ADMIN)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  bulk(@Body() bulkPhysicalBookDto: BulkPhysicalBookDto) {
+    return this.physicalBooksService.bulkUpsert(bulkPhysicalBookDto.records);
+  }
+
+  @Post('bulk-delete')
+  @Roles(Role.LIBRARIAN, Role.ADMIN)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  bulkDelete(@Body() bulkIdsDto: BulkIdsDto) {
+    return this.physicalBooksService.removeMany(bulkIdsDto.ids);
   }
 
   @Get()

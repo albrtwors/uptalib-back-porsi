@@ -3,6 +3,7 @@ import { InventoryService } from './inventory.service';
 import { CreateItemInventory } from './dto/create-item-dto';
 import { EditItemInventory } from './dto/edit-item-dto';
 import { CreateInventoryDto } from './dto/create-inventory.dto';
+import { BulkIdsDto } from '../utils/bulk-ids.dto';
 import { Role } from '@prisma/client';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -20,6 +21,14 @@ export class InventoryController {
 
     return this.inventoryService.create(createInventoryDto);
 
+  }
+
+  // 📦 Borrado de uno o varios artículos en lote
+  @Post('bulk-delete')
+  @Roles(Role.LIBRARIAN, Role.ADMIN)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  bulkDelete(@Body() bulkIdsDto: BulkIdsDto) {
+    return this.inventoryService.removeMany(bulkIdsDto.ids);
   }
 
   @Get()

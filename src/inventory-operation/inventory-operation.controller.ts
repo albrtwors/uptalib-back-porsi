@@ -4,6 +4,7 @@ import { CreateInventoryOperationDto } from './dto/create-inventory-operation.dt
 import { UpdateInventoryOperationDto } from './dto/update-inventory-operation.dto';
 import { EntrieDto } from './dto/entrie-dto';
 import { DropDto } from './dto/drop-dto';
+import { BulkIdsDto } from '../utils/bulk-ids.dto';
 import { LoanDto } from './dto/loan-dto';
 import { Role } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -66,6 +67,13 @@ export class InventoryOperationController {
     return this.inventoryOperationService.findAll(query);
   }
 
+  @Post('bulk-delete')
+  @Roles(Role.LIBRARIAN, Role.ADMIN)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  bulkDelete(@Body() bulkIdsDto: BulkIdsDto) {
+    return this.inventoryOperationService.removeMany(bulkIdsDto.ids);
+  }
+
   @Get(':id')
   @Roles(Role.LIBRARIAN, Role.ADMIN)
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -84,6 +92,6 @@ export class InventoryOperationController {
   @Roles(Role.LIBRARIAN, Role.ADMIN)
   @UseGuards(JwtAuthGuard, RolesGuard)
   remove(@Param('id') id: string) {
-    return this.inventoryOperationService.remove(+id);
+    return this.inventoryOperationService.remove(id);
   }
 }

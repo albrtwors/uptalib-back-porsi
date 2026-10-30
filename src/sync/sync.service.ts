@@ -49,7 +49,6 @@ const SCALARS: Record<string, string[]> = {
     'description',
     'totalStock',
     'availableStock',
-    'typeId',
     'status',
   ],
   itemCopy: ['code', 'status', 'location', 'observations', 'itemId'],
@@ -119,7 +118,11 @@ export class SyncService {
   }
 
   private isNewer(incoming: any, existing: any): boolean {
-    if (!incoming || incoming.updatedAt === undefined || incoming.updatedAt === null) {
+    if (
+      !incoming ||
+      incoming.updatedAt === undefined ||
+      incoming.updatedAt === null
+    ) {
       return false;
     }
     const a = new Date(incoming.updatedAt).getTime();
@@ -129,7 +132,11 @@ export class SyncService {
     return a > b;
   }
 
-  private pick(model: string, row: any, includeId = true): Record<string, unknown> {
+  private pick(
+    model: string,
+    row: any,
+    includeId = true,
+  ): Record<string, unknown> {
     const fields = SCALARS[model] ?? [];
     const data: Record<string, unknown> = {};
     if (includeId && row.id !== undefined) data.id = row.id;
@@ -152,7 +159,10 @@ export class SyncService {
         await tx[model].create({ data: this.pick(model, row) });
         counters.created += 1;
       } else if (this.isNewer(row, existing)) {
-        await tx[model].update({ where: { id: row.id }, data: this.pick(model, row, false) });
+        await tx[model].update({
+          where: { id: row.id },
+          data: this.pick(model, row, false),
+        });
         counters.updated += 1;
       } else {
         counters.skipped += 1;
@@ -192,7 +202,7 @@ export class SyncService {
       this.prisma.bookCopy.findMany(),
       this.prisma.bookOperation.findMany(),
       this.prisma.item.findMany({
-        include: { authors: { select: { id: true } }, categories: { select: { id: true } } },
+        include: { types: { select: { id: true } } },
       }),
       this.prisma.itemCopy.findMany(),
       this.prisma.itemOperation.findMany(),
@@ -217,10 +227,8 @@ export class SyncService {
         bookOperations,
         items: items.map((i) => ({
           ...i,
-          authorIds: i.authors.map((a) => a.id),
-          categoryIds: i.categories.map((c) => c.id),
-          authors: undefined,
-          categories: undefined,
+          typeIds: i.types.map((t) => t.id),
+          types: undefined,
         })),
         itemCopies,
         itemOperations,
@@ -239,25 +247,43 @@ export class SyncService {
 
     await this.prisma.$transaction(
       async (tx) => {
-        await this.upsertScalars(tx, 'category', data.categories ?? [], counters);
+        await this.upsertScalars(
+          tx,
+          'category',
+          data.categories ?? [],
+          counters,
+        );
         await this.upsertScalars(tx, 'author', data.authors ?? [], counters);
-        await this.upsertScalars(tx, 'itemType', data.itemTypes ?? [], counters);
+        await this.upsertScalars(
+          tx,
+          'itemType',
+          data.itemTypes ?? [],
+          counters,
+        );
         await this.upsertScalars(tx, 'pnf', data.pnfs ?? [], counters);
 
         const authorIds = new Set(
-          (await tx.author.findMany({ select: { id: true } })).map((a: any) => a.id),
+          (await tx.author.findMany({ select: { id: true } })).map(
+            (a: any) => a.id,
+          ),
         );
         const categoryIds = new Set(
-          (await tx.category.findMany({ select: { id: true } })).map((c: any) => c.id),
+          (await tx.category.findMany({ select: { id: true } })).map(
+            (c: any) => c.id,
+          ),
         );
         const itemTypeIds = new Set(
-          (await tx.itemType.findMany({ select: { id: true } })).map((t: any) => t.id),
+          (await tx.itemType.findMany({ select: { id: true } })).map(
+            (t: any) => t.id,
+          ),
         );
 
         // PhysicalBooks (con relaciones autor/categoría)
         for (const row of data.physicalBooks ?? []) {
           if (!row || typeof row.id !== 'string') continue;
-          const existing = await tx.physicalBook.findUnique({ where: { id: row.id } });
+          const existing = await tx.physicalBook.findUnique({
+            where: { id: row.id },
+          });
           const base = this.pick('physicalBook', row);
           const incomingPnfIds = Array.isArray(row.pnfIds)
             ? row.pnfIds.filter((id: any) => typeof id === 'string')
@@ -269,16 +295,23 @@ export class SyncService {
             if (incomingPnfIds.length > 0) {
               await tx.physicalBook.update({
                 where: { id: row.id },
-                data: { pnfs: { set: incomingPnfIds.map((id: string) => ({ id })) } },
+                data: {
+                  pnfs: { set: incomingPnfIds.map((id: string) => ({ id })) },
+                },
               });
             }
           } else if (this.isNewer(row, existing)) {
-            await tx.physicalBook.update({ where: { id: row.id }, data: this.pick('physicalBook', row, false) });
+            await tx.physicalBook.update({
+              where: { id: row.id },
+              data: this.pick('physicalBook', row, false),
+            });
             counters.updated += 1;
             if (incomingPnfIds.length > 0) {
               await tx.physicalBook.update({
                 where: { id: row.id },
-                data: { pnfs: { set: incomingPnfIds.map((id: string) => ({ id })) } },
+                data: {
+                  pnfs: { set: incomingPnfIds.map((id: string) => ({ id })) },
+                },
               });
             }
           } else {
@@ -314,41 +347,45 @@ export class SyncService {
         // Items
         for (const row of data.items ?? []) {
           if (!row || typeof row.id !== 'string') continue;
-          if (row.typeId && !itemTypeIds.has(row.typeId)) {
+
+          // Compatibilidad con snapshots antiguos que traían un único typeId.
+          const typeIdsProvided =
+            Array.isArray(row.typeIds) || typeof row.typeId === 'string';
+          const incomingTypeIds = Array.isArray(row.typeIds)
+            ? row.typeIds
+            : typeof row.typeId === 'string'
+              ? [row.typeId]
+              : [];
+          const validTypeIds = incomingTypeIds.filter(
+            (id: any) => typeof id === 'string' && itemTypeIds.has(id),
+          );
+
+          if (typeIdsProvided && validTypeIds.length === 0) {
             counters.skipped += 1;
             continue;
           }
+
           const existing = await tx.item.findUnique({ where: { id: row.id } });
           if (!existing) {
             await tx.item.create({ data: this.pick('item', row) as any });
             counters.created += 1;
           } else if (this.isNewer(row, existing)) {
-            await tx.item.update({ where: { id: row.id }, data: this.pick('item', row, false) });
+            await tx.item.update({
+              where: { id: row.id },
+              data: this.pick('item', row, false),
+            });
             counters.updated += 1;
           } else {
             counters.skipped += 1;
             continue;
           }
-          if (Array.isArray(row.authorIds)) {
+
+          if (typeIdsProvided) {
             await tx.item.update({
               where: { id: row.id },
               data: {
-                authors: {
-                  set: row.authorIds
-                    .filter((id: string) => authorIds.has(id))
-                    .map((id: string) => ({ id })),
-                },
-              },
-            });
-          }
-          if (Array.isArray(row.categoryIds)) {
-            await tx.item.update({
-              where: { id: row.id },
-              data: {
-                categories: {
-                  set: row.categoryIds
-                    .filter((id: string) => categoryIds.has(id))
-                    .map((id: string) => ({ id })),
+                types: {
+                  set: validTypeIds.map((id: string) => ({ id })),
                 },
               },
             });
@@ -356,11 +393,31 @@ export class SyncService {
         }
 
         // Copias
-        await this.upsertScalars(tx, 'bookCopy', data.bookCopies ?? [], counters);
-        await this.upsertScalars(tx, 'itemCopy', data.itemCopies ?? [], counters);
+        await this.upsertScalars(
+          tx,
+          'bookCopy',
+          data.bookCopies ?? [],
+          counters,
+        );
+        await this.upsertScalars(
+          tx,
+          'itemCopy',
+          data.itemCopies ?? [],
+          counters,
+        );
         // Operaciones
-        await this.upsertScalars(tx, 'bookOperation', data.bookOperations ?? [], counters);
-        await this.upsertScalars(tx, 'itemOperation', data.itemOperations ?? [], counters);
+        await this.upsertScalars(
+          tx,
+          'bookOperation',
+          data.bookOperations ?? [],
+          counters,
+        );
+        await this.upsertScalars(
+          tx,
+          'itemOperation',
+          data.itemOperations ?? [],
+          counters,
+        );
       },
       { timeout: 120000, maxWait: 20000 },
     );
@@ -377,16 +434,23 @@ export class SyncService {
   }
 
   private async buildInfo() {
-    const [categories, authors, itemTypes, physicalBooks, items, bookCopies, itemCopies] =
-      await Promise.all([
-        this.prisma.category.count(),
-        this.prisma.author.count(),
-        this.prisma.itemType.count(),
-        this.prisma.physicalBook.count(),
-        this.prisma.item.count(),
-        this.prisma.bookCopy.count(),
-        this.prisma.itemCopy.count(),
-      ]);
+    const [
+      categories,
+      authors,
+      itemTypes,
+      physicalBooks,
+      items,
+      bookCopies,
+      itemCopies,
+    ] = await Promise.all([
+      this.prisma.category.count(),
+      this.prisma.author.count(),
+      this.prisma.itemType.count(),
+      this.prisma.physicalBook.count(),
+      this.prisma.item.count(),
+      this.prisma.bookCopy.count(),
+      this.prisma.itemCopy.count(),
+    ]);
     return {
       serverTime: new Date().toISOString(),
       counts: {

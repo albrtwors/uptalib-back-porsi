@@ -4,6 +4,7 @@ import { CreateItemInventory } from './dto/create-item-dto';
 import { EditItemInventory } from './dto/edit-item-dto';
 import { CreateInventoryDto } from './dto/create-inventory.dto';
 import { BulkIdsDto } from '../utils/bulk-ids.dto';
+import { BulkInventoryDto } from './dto/bulk-inventory.dto';
 import { Role } from '@prisma/client';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -21,6 +22,14 @@ export class InventoryController {
 
     return this.inventoryService.create(createInventoryDto);
 
+  }
+
+  // 📦 Alta y edición de varios artículos en un único lote
+  @Post('bulk')
+  @Roles(Role.LIBRARIAN, Role.ADMIN)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  bulk(@Body() bulkInventoryDto: BulkInventoryDto) {
+    return this.inventoryService.bulkUpsert(bulkInventoryDto.records);
   }
 
   // 📦 Borrado de uno o varios artículos en lote

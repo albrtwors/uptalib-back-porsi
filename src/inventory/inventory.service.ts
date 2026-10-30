@@ -1,16 +1,25 @@
-import { BadRequestException, Injectable, HttpException, HttpStatus } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  HttpException,
+  HttpStatus,
+} from '@nestjs/common';
 import { CopyStatus } from '@prisma/client';
 import { PrismaService } from 'prisma/prisma.service';
 import { getPagination } from '../functions/pagination/getPagination';
 import getStockDifference from '../utils/getDifference';
 import { createItemCopies, recalcItemStock } from '../utils/copies';
-import { bulkSummaryMessage } from '../utils/bulk';
+import { bulkErrorMessage, bulkSummaryMessage } from '../utils/bulk';
 
 @Injectable()
 export class InventoryService {
-  constructor(private prisma: PrismaService) { }
+  constructor(private prisma: PrismaService) {}
 
-  private async resolveAuthorIds(tx: any, ids: string[] = [], names: string[] = []): Promise<string[]> {
+  private async resolveTypeIds(
+    tx: any,
+    ids: string[] = [],
+    names: string[] = [],
+  ): Promise<string[]> {
     const resolved: string[] = [];
 
     for (const id of ids) {
@@ -21,58 +30,18 @@ export class InventoryService {
       const cleaned = `${name}`.trim();
       if (!cleaned) continue;
 
-      let author = await tx.author.findFirst({
-        where: { name: { equals: cleaned, mode: 'insensitive' } }
-      });
-
-      if (!author) {
-        author = await tx.author.create({ data: { name: cleaned } });
-      }
-
-      if (!resolved.includes(author.id)) resolved.push(author.id);
-    }
-
-    return resolved;
-  }
-
-  private async resolveCategoryIds(tx: any, ids: string[] = [], names: string[] = []): Promise<string[]> {
-    const resolved: string[] = [];
-
-    for (const id of ids) {
-      if (id && !resolved.includes(id)) resolved.push(id);
-    }
-
-    for (const name of names) {
-      const cleaned = `${name}`.trim();
-      if (!cleaned) continue;
-
-      let category = await tx.category.findFirst({
-        where: { name: { equals: cleaned, mode: 'insensitive' } }
-      });
-
-      if (!category) {
-        category = await tx.category.create({ data: { name: cleaned } });
-      }
-
-      if (!resolved.includes(category.id)) resolved.push(category.id);
-    }
-
-    return resolved;
-  }
-
-  private async resolveTypeId(tx: any, typeId?: string, typeName?: string): Promise<string | undefined> {
-    let resolvedTypeId = typeId;
-    if (!resolvedTypeId && typeName && typeName.trim() !== '') {
-      const cleanedTypeName = typeName.trim();
       let itemType = await tx.itemType.findFirst({
-        where: { name: { equals: cleanedTypeName, mode: 'insensitive' } }
+        where: { name: { equals: cleaned, mode: 'insensitive' } },
       });
+
       if (!itemType) {
-        itemType = await tx.itemType.create({ data: { name: cleanedTypeName } });
+        itemType = await tx.itemType.create({ data: { name: cleaned } });
       }
-      resolvedTypeId = itemType.id;
+
+      if (!resolved.includes(itemType.id)) resolved.push(itemType.id);
     }
-    return resolvedTypeId;
+
+    return resolved;
   }
 
   private async createCopies(
@@ -80,7 +49,12 @@ export class InventoryService {
     item: { id: string; code?: string | null },
     quantity: number,
     requestedCodes: string[] = [],
-    extra: { location?: string | null; observations?: string | null; codeFrom?: string | null; codeTo?: string | null } = {}
+    extra: {
+      location?: string | null;
+      observations?: string | null;
+      codeFrom?: string | null;
+      codeTo?: string | null;
+    } = {},
   ) {
     return createItemCopies(tx, item, quantity, requestedCodes, extra);
   }
@@ -89,11 +63,11 @@ export class InventoryService {
     tx: any,
     item: { id: string; code?: string | null },
     targetTotal: number,
-    requestedCodes: string[] = []
+    requestedCodes: string[] = [],
   ): Promise<boolean> {
     const copies = await tx.itemCopy.findMany({
       where: { itemId: item.id },
-      orderBy: { createdAt: 'asc' }
+      orderBy: { createdAt: 'asc' },
     });
 
     if (copies.length === 0) return false;
@@ -104,21 +78,23 @@ export class InventoryService {
     if (diff > 0) {
       await this.createCopies(tx, item, diff, requestedCodes);
     } else if (diff < 0) {
-      const removable = active.filter((c: any) => c.status !== CopyStatus.PRESTADO);
+      const removable = active.filter(
+        (c: any) => c.status !== CopyStatus.PRESTADO,
+      );
       if (Math.abs(diff) > removable.length) {
         throw new HttpException(
           'Hay préstamos pendientes que impiden que reduzcas tanto el stock',
-          HttpStatus.BAD_REQUEST
+          HttpStatus.BAD_REQUEST,
         );
       }
       const ordered = [
         ...removable.filter((c: any) => c.status === CopyStatus.DISPONIBLE),
-        ...removable.filter((c: any) => c.status !== CopyStatus.DISPONIBLE)
+        ...removable.filter((c: any) => c.status !== CopyStatus.DISPONIBLE),
       ];
       for (let i = 0; i < Math.abs(diff); i += 1) {
         await tx.itemCopy.update({
           where: { id: ordered[i].id },
-          data: { status: CopyStatus.BAJA }
+          data: { status: CopyStatus.BAJA },
         });
       }
     }
@@ -131,74 +107,55 @@ export class InventoryService {
       const {
         typeId,
         typeName,
+        typeIds = [],
+        typeNames = [],
         stock,
-        authorId,
-        authorName,
-        authorIds = [],
-        authorNames = [],
-        categoryId,
-        categoryName,
-        categoryIds = [],
-        categoryNames = [],
         copyCodes = [],
         ...restOfDto
       } = createInventoryDto;
 
-      const resolvedTypeId = await this.resolveTypeId(tx, typeId, typeName);
+      const resolvedTypeIds = await this.resolveTypeIds(
+        tx,
+        [...(typeId ? [typeId] : []), ...typeIds],
+        [...(typeName ? [typeName] : []), ...typeNames],
+      );
 
-      // 💡 Resolución de múltiples autores (copia de la lógica del módulo de libros digitales)
-      const resolvedAuthorIds = await this.resolveAuthorIds(tx, [
-        ...(authorId ? [authorId] : []),
-        ...authorIds
-      ], [
-        ...(authorName ? [authorName] : []),
-        ...authorNames
-      ]);
-
-      // 💡 Resolución de múltiples categorías
-      const resolvedCategoryIds = await this.resolveCategoryIds(tx, [
-        ...(categoryId ? [categoryId] : []),
-        ...categoryIds
-      ], [
-        ...(categoryName ? [categoryName] : []),
-        ...categoryNames
-      ]);
+      if (resolvedTypeIds.length === 0) {
+        throw new BadRequestException('Debes seleccionar al menos un tipo');
+      }
 
       const parsedStock = parseInt(stock) || 0;
 
       const item = await tx.item.create({
         data: {
           ...restOfDto,
-          typeId: resolvedTypeId || undefined,
           availableStock: 0,
           totalStock: 0,
           status: 'DISPONIBLE',
-          authors: {
-            connect: resolvedAuthorIds.map(id => ({ id }))
+          types: {
+            connect: resolvedTypeIds.map((id) => ({ id })),
           },
-          categories: {
-            connect: resolvedCategoryIds.map(id => ({ id }))
-          }
         },
         include: {
-          type: true,
-          authors: { select: { id: true, name: true } },
-          categories: { select: { id: true, name: true } }
-        }
+          types: { select: { id: true, name: true } },
+        },
       });
 
       // 💡 Cada unidad del stock se materializa como un ejemplar individual
-      await this.createCopies(tx, item, parsedStock, Array.isArray(copyCodes) ? copyCodes : []);
+      await this.createCopies(
+        tx,
+        item,
+        parsedStock,
+        Array.isArray(copyCodes) ? copyCodes : [],
+      );
       await recalcItemStock(tx, item.id);
 
       const withStock = await tx.item.findUnique({
         where: { id: item.id },
         include: {
-          type: true,
-          authors: { select: { id: true, name: true } },
-          categories: { select: { id: true, name: true } },
-          copies: { orderBy: { createdAt: 'asc' } }
-        }
+          types: { select: { id: true, name: true } },
+          copies: { orderBy: { createdAt: 'asc' } },
+        },
       });
 
       return { item: withStock, message: 'Item añadido exitosamente' };
@@ -221,54 +178,30 @@ export class InventoryService {
       ];
     }
 
-    // 💡 Ajustado el filtro de tipos de item para que sea Case Insensitive también
+    // 💡 Coincide si el ítem tiene al menos un tipo con ese nombre
     if (query.type) {
       const typeFilter = {
-        type: {
-          name: { contains: query.type, mode: 'insensitive' }
-        }
+        types: {
+          some: {
+            name: { contains: query.type, mode: 'insensitive' },
+          },
+        },
       };
       if (!where.AND) where.AND = [typeFilter];
       else where.AND.push(typeFilter);
     }
 
-    // 💡 Filtro por categorías: coincide si el ítem tiene al menos una con ese nombre
-    if (query.categoryName) {
-      const categoryFilter = {
-        categories: {
-          some: {
-            name: { contains: query.categoryName, mode: 'insensitive' }
-          }
-        }
-      };
-      if (!where.AND) where.AND = [categoryFilter];
-      else where.AND.push(categoryFilter);
-    }
-
-    // 💡 Filtro por autores: coincide si el ítem tiene al menos uno con ese nombre
-    if (query.authorName) {
-      const authorFilter = {
-        authors: {
-          some: {
-            name: { contains: query.authorName, mode: 'insensitive' }
-          }
-        }
-      };
-      if (!where.AND) where.AND = [authorFilter];
-      else where.AND.push(authorFilter);
-    }
-
-    const totalPages = Math.ceil(await this.prisma.item.count({ where }) / take);
+    const totalPages = Math.ceil(
+      (await this.prisma.item.count({ where })) / take,
+    );
     const data = await this.prisma.item.findMany({
       where,
       skip,
       take,
       include: {
-        type: true,
-        authors: { select: { id: true, name: true } },
-        categories: { select: { id: true, name: true } }
+        types: { select: { id: true, name: true } },
       },
-      orderBy: { createdAt: 'desc' }
+      orderBy: { createdAt: 'desc' },
     });
 
     return { data, totalPages };
@@ -278,14 +211,13 @@ export class InventoryService {
     const item = await this.prisma.item.findUnique({
       where: { id },
       include: {
-        type: true,
-        authors: { select: { id: true, name: true } },
-        categories: { select: { id: true, name: true } },
-        copies: { orderBy: { createdAt: 'asc' } }
-      }
+        types: { select: { id: true, name: true } },
+        copies: { orderBy: { createdAt: 'asc' } },
+      },
     });
 
-    if (!item) throw new HttpException('Item no encontrado', HttpStatus.NOT_FOUND);
+    if (!item)
+      throw new HttpException('Item no encontrado', HttpStatus.NOT_FOUND);
 
     return { status: 'success', data: item };
   }
@@ -293,55 +225,48 @@ export class InventoryService {
   async edit(id: string, updateInventoryDto: any) {
     return this.prisma.$transaction(async (tx) => {
       const existingItem = await tx.item.findUnique({ where: { id } });
-      if (!existingItem) throw new HttpException('Item no encontrado', HttpStatus.NOT_FOUND);
+      if (!existingItem)
+        throw new HttpException('Item no encontrado', HttpStatus.NOT_FOUND);
 
       const {
         typeId,
         typeName,
+        typeIds,
+        typeNames,
         stock,
-        authorId,
-        authorName,
-        authorIds,
-        authorNames,
-        categoryId,
-        categoryName,
-        categoryIds,
-        categoryNames,
         copyCodes,
         ...restOfDto
       } = updateInventoryDto;
 
-      const resolvedTypeId = await this.resolveTypeId(tx, typeId, typeName);
+      const typesProvided =
+        typeId !== undefined ||
+        typeName !== undefined ||
+        typeIds !== undefined ||
+        typeNames !== undefined;
 
-      // 💡 Resolución de múltiples autores al editar
-      const resolvedAuthorIds = await this.resolveAuthorIds(tx, [
-        ...(authorId ? [authorId] : []),
-        ...(authorIds ?? [])
-      ], [
-        ...(authorName ? [authorName] : []),
-        ...(authorNames ?? [])
-      ]);
+      const resolvedTypeIds = typesProvided
+        ? await this.resolveTypeIds(
+            tx,
+            [...(typeId ? [typeId] : []), ...(typeIds ?? [])],
+            [...(typeName ? [typeName] : []), ...(typeNames ?? [])],
+          )
+        : [];
 
-      // 💡 Resolución de múltiples categorías al editar
-      const resolvedCategoryIds = await this.resolveCategoryIds(tx, [
-        ...(categoryId ? [categoryId] : []),
-        ...(categoryIds ?? [])
-      ], [
-        ...(categoryName ? [categoryName] : []),
-        ...(categoryNames ?? [])
-      ]);
+      if (typesProvided && resolvedTypeIds.length === 0) {
+        throw new BadRequestException('Debes seleccionar al menos un tipo');
+      }
 
-      const targetTotal = stock !== undefined ? parseInt(stock) : existingItem.totalStock;
+      const targetTotal =
+        stock !== undefined ? parseInt(stock) : existingItem.totalStock;
       const hasCopies = await this.reconcileCopies(
         tx,
         existingItem,
         targetTotal,
-        Array.isArray(copyCodes) ? copyCodes : []
+        Array.isArray(copyCodes) ? copyCodes : [],
       );
 
       const updateData: any = {
         ...restOfDto,
-        typeId: resolvedTypeId || undefined,
       };
 
       if (!hasCopies) {
@@ -350,25 +275,22 @@ export class InventoryService {
         const newValue = getStockDifference({
           oldAvailableStockValue: existingItem.availableStock,
           oldCurrentStockValue: existingItem.totalStock,
-          newStockValue: parsedStock
+          newStockValue: parsedStock,
         });
         if (newValue < 0) {
-          throw new HttpException("Hay préstamos pendientes que impiden que reduzcas tanto el stock", HttpStatus.BAD_REQUEST);
+          throw new HttpException(
+            'Hay préstamos pendientes que impiden que reduzcas tanto el stock',
+            HttpStatus.BAD_REQUEST,
+          );
         }
         updateData.availableStock = parsedStock;
         updateData.totalStock = newValue;
         updateData.status = 'DISPONIBLE';
       }
 
-      if (authorIds !== undefined || authorId !== undefined || authorNames !== undefined || authorName !== undefined) {
-        updateData.authors = {
-          set: resolvedAuthorIds.map(id => ({ id }))
-        };
-      }
-
-      if (categoryIds !== undefined || categoryId !== undefined || categoryNames !== undefined || categoryName !== undefined) {
-        updateData.categories = {
-          set: resolvedCategoryIds.map(id => ({ id }))
+      if (typesProvided) {
+        updateData.types = {
+          set: resolvedTypeIds.map((id) => ({ id })),
         };
       }
 
@@ -376,10 +298,8 @@ export class InventoryService {
         where: { id },
         data: updateData,
         include: {
-          type: true,
-          authors: { select: { id: true, name: true } },
-          categories: { select: { id: true, name: true } }
-        }
+          types: { select: { id: true, name: true } },
+        },
       });
 
       if (hasCopies) {
@@ -387,10 +307,8 @@ export class InventoryService {
         item = await tx.item.findUnique({
           where: { id },
           include: {
-            type: true,
-            authors: { select: { id: true, name: true } },
-            categories: { select: { id: true, name: true } }
-          }
+            types: { select: { id: true, name: true } },
+          },
         });
       }
 
@@ -405,6 +323,57 @@ export class InventoryService {
     return { item, message: 'Item Eliminado correctamente' };
   }
 
+  /**
+   * Crea o actualiza varios artículos en un mismo request. Cada registro se
+   * procesa por separado para que un error no descarte los demás.
+   */
+  async bulkUpsert(records: any[]) {
+    const created: any[] = [];
+    const updated: any[] = [];
+    const errors: { index: number; name: string; message: string }[] = [];
+
+    for (let index = 0; index < records.length; index++) {
+      const record = records[index] ?? {};
+      const { id, ...data } = record;
+      const name = `${record.name ?? ''}`.trim() || `Registro ${index + 1}`;
+      const hasTypes =
+        [record.typeId, record.typeName].some((value) => `${value ?? ''}`.trim()) ||
+        (Array.isArray(record.typeIds) && record.typeIds.length > 0) ||
+        (Array.isArray(record.typeNames) && record.typeNames.length > 0);
+
+      const missing: string[] = [];
+      if (!id && !`${data.name ?? ''}`.trim()) missing.push('name');
+      if (!id && [undefined, null, ''].includes(data.stock)) missing.push('stock');
+      if (!id && !hasTypes) missing.push('typeIds/typeNames');
+
+      if (missing.length > 0) {
+        errors.push({
+          index,
+          name,
+          message: `Faltan campos obligatorios: ${missing.join(', ')}`,
+        });
+        continue;
+      }
+
+      try {
+        const result: any = id ? await this.edit(id, data) : await this.create(data);
+        (id ? updated : created).push(result?.item ?? result);
+      } catch (error: any) {
+        errors.push({ index, name, message: bulkErrorMessage(error) });
+      }
+    }
+
+    return {
+      status: 'success',
+      message: bulkSummaryMessage({
+        created: created.length,
+        updated: updated.length,
+        failed: errors.length,
+      }),
+      data: { created, updated, errors },
+    };
+  }
+
   async removeMany(ids: string[]) {
     const deleted = await this.prisma.$transaction(async (tx) => {
       await tx.itemOperation.deleteMany({ where: { itemId: { in: ids } } });
@@ -415,7 +384,7 @@ export class InventoryService {
     return {
       status: 'success',
       message: bulkSummaryMessage({ deleted, failed: ids.length - deleted }),
-      data: { deleted }
+      data: { deleted },
     };
   }
 
@@ -423,10 +392,16 @@ export class InventoryService {
   async addCopies(id: string, dto: any) {
     return this.prisma.$transaction(async (tx) => {
       const item = await tx.item.findUnique({ where: { id } });
-      if (!item) throw new HttpException('Item no encontrado', HttpStatus.NOT_FOUND);
+      if (!item)
+        throw new HttpException('Item no encontrado', HttpStatus.NOT_FOUND);
 
-      const requestedCodes: string[] = Array.isArray(dto.codes) ? dto.codes : [];
-      const quantity = dto.quantity !== undefined ? parseInt(dto.quantity) : requestedCodes.length;
+      const requestedCodes: string[] = Array.isArray(dto.codes)
+        ? dto.codes
+        : [];
+      const quantity =
+        dto.quantity !== undefined
+          ? parseInt(dto.quantity)
+          : requestedCodes.length;
       if (!quantity || quantity <= 0) {
         throw new BadRequestException('Debes indicar al menos un ejemplar');
       }
@@ -435,26 +410,31 @@ export class InventoryService {
         location: dto.location,
         observations: dto.observations,
         codeFrom: dto.codeFrom,
-        codeTo: dto.codeTo
+        codeTo: dto.codeTo,
       });
 
       const summary = await recalcItemStock(tx, id);
       const copies = await tx.itemCopy.findMany({
         where: { itemId: id },
-        orderBy: { createdAt: 'asc' }
+        orderBy: { createdAt: 'asc' },
       });
 
-      return { status: 'success', message: 'Ejemplares agregados', data: { copies, summary } };
+      return {
+        status: 'success',
+        message: 'Ejemplares agregados',
+        data: { copies, summary },
+      };
     });
   }
 
   async findCopies(id: string) {
     const item = await this.prisma.item.findUnique({ where: { id } });
-    if (!item) throw new HttpException('Item no encontrado', HttpStatus.NOT_FOUND);
+    if (!item)
+      throw new HttpException('Item no encontrado', HttpStatus.NOT_FOUND);
 
     const copies = await this.prisma.itemCopy.findMany({
       where: { itemId: id },
-      orderBy: { createdAt: 'asc' }
+      orderBy: { createdAt: 'asc' },
     });
 
     return { status: 'success', data: copies };
@@ -463,10 +443,12 @@ export class InventoryService {
   async updateCopy(copyId: string, dto: any) {
     return this.prisma.$transaction(async (tx) => {
       const copy = await tx.itemCopy.findUnique({ where: { id: copyId } });
-      if (!copy) throw new HttpException('Ejemplar no encontrado', HttpStatus.NOT_FOUND);
+      if (!copy)
+        throw new HttpException('Ejemplar no encontrado', HttpStatus.NOT_FOUND);
 
       const data: any = {};
-      if (dto.code !== undefined && `${dto.code}`.trim()) data.code = `${dto.code}`.trim();
+      if (dto.code !== undefined && `${dto.code}`.trim())
+        data.code = `${dto.code}`.trim();
       if (dto.status !== undefined) data.status = dto.status;
       if (dto.location !== undefined) data.location = dto.location;
       if (dto.observations !== undefined) data.observations = dto.observations;
@@ -476,29 +458,43 @@ export class InventoryService {
         updated = await tx.itemCopy.update({ where: { id: copyId }, data });
       } catch (error: any) {
         if (error?.code === 'P2002') {
-          throw new HttpException('Ya existe un ejemplar con ese código', HttpStatus.CONFLICT);
+          throw new HttpException(
+            'Ya existe un ejemplar con ese código',
+            HttpStatus.CONFLICT,
+          );
         }
         throw error;
       }
 
       const summary = await recalcItemStock(tx, copy.itemId);
-      return { status: 'success', message: 'Ejemplar actualizado', data: { copy: updated, summary } };
+      return {
+        status: 'success',
+        message: 'Ejemplar actualizado',
+        data: { copy: updated, summary },
+      };
     });
   }
 
   async removeCopy(copyId: string) {
     return this.prisma.$transaction(async (tx) => {
       const copy = await tx.itemCopy.findUnique({ where: { id: copyId } });
-      if (!copy) throw new HttpException('Ejemplar no encontrado', HttpStatus.NOT_FOUND);
+      if (!copy)
+        throw new HttpException('Ejemplar no encontrado', HttpStatus.NOT_FOUND);
 
       if (copy.status === CopyStatus.PRESTADO) {
-        throw new BadRequestException('No puedes eliminar un ejemplar que está prestado');
+        throw new BadRequestException(
+          'No puedes eliminar un ejemplar que está prestado',
+        );
       }
 
       await tx.itemCopy.delete({ where: { id: copyId } });
       const summary = await recalcItemStock(tx, copy.itemId);
 
-      return { status: 'success', message: 'Ejemplar eliminado', data: { summary } };
+      return {
+        status: 'success',
+        message: 'Ejemplar eliminado',
+        data: { summary },
+      };
     });
   }
 }

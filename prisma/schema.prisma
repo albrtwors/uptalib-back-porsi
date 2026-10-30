@@ -30,7 +30,6 @@ model Category {
   id            String         @id @default(cuid())
   name          String         @unique
   physicalBooks PhysicalBook[]
-  items         Item[]
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
 }
@@ -156,7 +155,6 @@ model Author {
   name          String
   physicalBooks PhysicalBook[]
   books         Book[] // 💡 Cambiado: Relación implícita limpia para alinearse al orden alfabético de Postgres
-  items         Item[]
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
 }
@@ -211,11 +209,8 @@ model Item {
   description    String?
   totalStock     Int
   availableStock Int
-  type           ItemType   @relation(fields: [typeId], references: [id])
-  typeId         String
   status         ItemStatus
-  authors        Author[]
-  categories     Category[]
+  types          ItemType[]
 
   itemOperations ItemOperation[]
   copies         ItemCopy[]

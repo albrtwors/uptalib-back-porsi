@@ -2997,6 +2997,7 @@ function getStockDifference({ newStockValue, oldCurrentStockValue, oldAvailableS
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.CAN_ENTER = exports.CAN_DROP = void 0;
 exports.bookCopyBase = bookCopyBase;
 exports.itemCopyBase = itemCopyBase;
 exports.buildRangeCodes = buildRangeCodes;
@@ -3005,6 +3006,7 @@ exports.createBookCopies = createBookCopies;
 exports.createItemCopies = createItemCopies;
 exports.recalcBookStock = recalcBookStock;
 exports.recalcItemStock = recalcItemStock;
+exports.applyCopyStatus = applyCopyStatus;
 const common_1 = __webpack_require__(3);
 const client_1 = __webpack_require__(7);
 function sanitize(seed) {
@@ -3213,6 +3215,42 @@ async function recalcItemStock(tx, itemId) {
         data: { totalStock: summary.total, availableStock: summary.available, status },
     });
     return { ...summary, status };
+}
+exports.CAN_DROP = [client_1.CopyStatus.DISPONIBLE, client_1.CopyStatus.MANTENIMIENTO];
+exports.CAN_ENTER = [client_1.CopyStatus.BAJA, client_1.CopyStatus.MANTENIMIENTO];
+const COPY_ACCESS = {
+    book: { model: 'bookCopy', fk: 'bookId', recalc: recalcBookStock },
+    item: { model: 'itemCopy', fk: 'itemId', recalc: recalcItemStock },
+};
+async function applyCopyStatus(tx, kind, parentId, copyIds, target, allowed) {
+    const access = COPY_ACCESS[kind];
+    const ids = [...new Set((copyIds ?? []).map((id) => `${id}`.trim()).filter(Boolean))];
+    if (ids.length === 0)
+        throw new common_1.BadRequestException('Debes seleccionar al menos un ejemplar');
+    const copies = await tx[access.model].findMany({
+        where: { id: { in: ids } },
+        select: { id: true, code: true, status: true, [access.fk]: true },
+    });
+    if (copies.length !== ids.length) {
+        throw new common_1.HttpException('Uno o más ejemplares no existen', common_1.HttpStatus.NOT_FOUND);
+    }
+    const wrongParent = copies.find((c) => c[access.fk] !== parentId);
+    if (wrongParent) {
+        throw new common_1.BadRequestException(`El ejemplar ${wrongParent.code} no pertenece a este recurso`);
+    }
+    const invalid = copies.find((c) => !allowed.includes(c.status));
+    if (invalid) {
+        throw new common_1.BadRequestException(`El ejemplar ${invalid.code} no permite esta operación (estado actual: ${invalid.status})`);
+    }
+    const updated = [];
+    for (const copy of copies) {
+        updated.push(await tx[access.model].update({
+            where: { id: copy.id },
+            data: { status: target },
+        }));
+    }
+    await access.recalc(tx, parentId);
+    return updated;
 }
 
 
@@ -5226,40 +5264,62 @@ let PhysicalBookOperationService = class PhysicalBookOperationService {
             const existingBook = await tx.physicalBook.findUnique({ where: { id: entriesDto.bookId } });
             if (!existingBook)
                 throw new common_1.HttpException('Libro físico no encontrado', common_1.HttpStatus.NOT_FOUND);
+            const copyIds = Array.isArray(entriesDto.copyIds) ? entriesDto.copyIds : [];
+            const quantity = entriesDto.quantity;
+            if (copyIds.length > 0) {
+                const retired = await (0, copies_1.applyCopyStatus)(tx, 'book', entriesDto.bookId, copyIds, client_1.CopyStatus.BAJA, copies_1.CAN_DROP);
+                const operations = [];
+                for (const copy of retired) {
+                    operations.push(await tx.bookOperation.create({
+                        data: {
+                            bookId: entriesDto.bookId,
+                            copyId: copy.id,
+                            quantity: 1,
+                            type: 'BAJA',
+                            personNames: entriesDto.personNames,
+                            personSurNames: entriesDto.personSurNames
+                        }
+                    }));
+                }
+                return { status: 'success', message: `Bajas añadidas: ${operations.length} ejemplar(es)`, operations };
+            }
+            if (!quantity || quantity <= 0) {
+                throw new common_1.BadRequestException('Indica una cantidad o selecciona los ejemplares a dar de baja');
+            }
             const copies = await tx.bookCopy.findMany({
                 where: { bookId: entriesDto.bookId },
                 orderBy: { createdAt: 'asc' }
             });
             if (copies.length > 0) {
-                const removable = copies.filter((c) => c.status !== client_1.CopyStatus.PRESTADO);
-                if (removable.length < entriesDto.quantity) {
+                const removable = copies.filter((c) => copies_1.CAN_DROP.includes(c.status));
+                if (removable.length < quantity) {
                     throw new common_1.BadRequestException('Hay prestamos pendientes, las bajas no pueden tener un valor superior a la cantidad de stock disponible');
                 }
                 const ordered = [
                     ...removable.filter((c) => c.status === client_1.CopyStatus.DISPONIBLE),
                     ...removable.filter((c) => c.status !== client_1.CopyStatus.DISPONIBLE)
                 ];
-                for (let i = 0; i < entriesDto.quantity; i += 1) {
+                for (let i = 0; i < quantity; i += 1) {
                     await tx.bookCopy.update({ where: { id: ordered[i].id }, data: { status: client_1.CopyStatus.BAJA } });
                 }
                 await (0, copies_1.recalcBookStock)(tx, entriesDto.bookId);
             }
             else {
                 const difference = existingBook.totalStock - existingBook.availableStock;
-                const newValue = existingBook.totalStock - entriesDto.quantity - difference;
+                const newValue = existingBook.totalStock - quantity - difference;
                 if (newValue < 0)
                     throw new common_1.BadRequestException('Hay prestamos pendientes, las bajas no pueden tener un valor superior a la cantidad de stock disponible');
                 await tx.physicalBook.update({
                     where: { id: entriesDto.bookId }, data: {
-                        availableStock: { decrement: entriesDto.quantity },
-                        totalStock: { decrement: entriesDto.quantity }
+                        availableStock: { decrement: quantity },
+                        totalStock: { decrement: quantity }
                     }
                 });
             }
             await tx.bookOperation.create({
                 data: {
                     bookId: entriesDto.bookId,
-                    quantity: entriesDto.quantity,
+                    quantity,
                     type: 'BAJA',
                     personNames: entriesDto.personNames,
                     personSurNames: entriesDto.personSurNames
@@ -5273,6 +5333,27 @@ let PhysicalBookOperationService = class PhysicalBookOperationService {
             const book = await tx.physicalBook.findUnique({ where: { id: entriesDto.bookId } });
             if (!book)
                 throw new common_1.HttpException('Libro físico no encontrado', common_1.HttpStatus.NOT_FOUND);
+            const copyIds = Array.isArray(entriesDto.copyIds) ? entriesDto.copyIds : [];
+            if (copyIds.length > 0) {
+                const reactivated = await (0, copies_1.applyCopyStatus)(tx, 'book', entriesDto.bookId, copyIds, client_1.CopyStatus.DISPONIBLE, copies_1.CAN_ENTER);
+                const operations = [];
+                for (const copy of reactivated) {
+                    operations.push(await tx.bookOperation.create({
+                        data: {
+                            bookId: entriesDto.bookId,
+                            copyId: copy.id,
+                            quantity: 1,
+                            type: 'ENTRADA',
+                            personNames: entriesDto.personNames,
+                            personSurNames: entriesDto.personSurNames
+                        }
+                    }));
+                }
+                return { status: 'success', message: `Entradas añadidas: ${operations.length} ejemplar(es) reactivado(s)`, operations };
+            }
+            if (!entriesDto.quantity || entriesDto.quantity <= 0) {
+                throw new common_1.BadRequestException('Indica una cantidad o selecciona los ejemplares a reactivar');
+            }
             await (0, copies_1.createBookCopies)(tx, book, entriesDto.quantity, Array.isArray(entriesDto.codes) ? entriesDto.codes : [], {
                 codeFrom: entriesDto.codeFrom,
                 codeTo: entriesDto.codeTo
@@ -5352,6 +5433,44 @@ let PhysicalBookOperationService = class PhysicalBookOperationService {
                 });
             }
             return { state: 'success', message: 'El libro ha sido devuelto' };
+        });
+    }
+    async dropLoan(id) {
+        return this.prisma.$transaction(async (tx) => {
+            const existingLoan = await tx.bookOperation.findUnique({ where: { id } });
+            if (!existingLoan)
+                throw new common_1.HttpException('Préstamo no encontrado', common_1.HttpStatus.NOT_FOUND);
+            if (existingLoan.type !== client_1.OperationType.PRESTAMO)
+                throw new common_1.BadRequestException('Sólo puedes dar de baja un préstamo en curso');
+            if (existingLoan.wasSettled)
+                throw new common_1.BadRequestException('Este préstamo ya fue cerrado');
+            await tx.bookOperation.create({
+                data: {
+                    bookId: existingLoan.bookId,
+                    copyId: existingLoan.copyId,
+                    quantity: existingLoan.quantity,
+                    observations: existingLoan.observations,
+                    personId: existingLoan.personId,
+                    personNames: existingLoan.personNames,
+                    personSurNames: existingLoan.personSurNames,
+                    type: 'BAJA'
+                }
+            });
+            await tx.bookOperation.update({ where: { id }, data: { wasSettled: true } });
+            if (existingLoan.copyId) {
+                await tx.bookCopy.update({ where: { id: existingLoan.copyId }, data: { status: client_1.CopyStatus.BAJA } });
+                await (0, copies_1.recalcBookStock)(tx, existingLoan.bookId);
+            }
+            else {
+                const existingBook = await tx.physicalBook.findUnique({ where: { id: existingLoan.bookId } });
+                if (!existingBook)
+                    throw new common_1.HttpException('Libro no encontrado', common_1.HttpStatus.NOT_FOUND);
+                await tx.physicalBook.update({
+                    where: { id: existingLoan.bookId },
+                    data: { totalStock: Math.max(0, existingBook.totalStock - existingLoan.quantity) }
+                });
+            }
+            return { state: 'success', message: 'El ejemplar fue dado de baja' };
         });
     }
     async loan(makeLoanDto) {
@@ -5541,6 +5660,9 @@ let PhysicalBookOperationController = class PhysicalBookOperationController {
     findAllLoans(query) {
         return this.physicalBookOperationService.findAllLoans(query);
     }
+    dropLoan(id) {
+        return this.physicalBookOperationService.dropLoan(id);
+    }
     bulkDelete(bulkIdsDto) {
         return this.physicalBookOperationService.removeMany(bulkIdsDto.ids);
     }
@@ -5610,6 +5732,16 @@ __decorate([
     __metadata("design:paramtypes", [Object]),
     __metadata("design:returntype", void 0)
 ], PhysicalBookOperationController.prototype, "findAllLoans", null);
+__decorate([
+    (0, common_1.Patch)('drop-loan/:id'),
+    (0, common_1.HttpCode)(common_1.HttpStatus.OK),
+    (0, roles_decorator_1.Roles)(client_1.Role.LIBRARIAN, client_1.Role.ADMIN),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
+    __param(0, (0, common_1.Param)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], PhysicalBookOperationController.prototype, "dropLoan", null);
 __decorate([
     (0, common_1.Post)('bulk-delete'),
     (0, roles_decorator_1.Roles)(client_1.Role.LIBRARIAN, client_1.Role.ADMIN),
@@ -5701,15 +5833,22 @@ class EntrieDto {
 }
 exports.EntrieDto = EntrieDto;
 __decorate([
-    (0, class_transformer_1.Transform)(({ value }) => parseInt(value)),
+    (0, class_transformer_1.Transform)(({ value }) => (value === '' || value === null || value === undefined ? undefined : parseInt(value))),
     (0, class_validator_1.IsInt)({ message: 'La cantidad debe ser un numero entero' }),
     (0, class_validator_1.IsPositive)({ message: 'La cantidad debe ser un numero positivo' }),
+    (0, class_validator_1.IsOptional)(),
     __metadata("design:type", Number)
 ], EntrieDto.prototype, "quantity", void 0);
 __decorate([
     (0, class_validator_1.IsDefined)({ message: 'Debes incluir un Item para dar entradas' }),
     __metadata("design:type", String)
 ], EntrieDto.prototype, "bookId", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsArray)({ message: 'Los ejemplares deben ser un arreglo' }),
+    (0, class_validator_1.IsString)({ each: true, message: 'Cada ejemplar debe ser una cadena de texto' }),
+    __metadata("design:type", Array)
+], EntrieDto.prototype, "copyIds", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsArray)({ message: 'Los códigos deben ser un arreglo' }),
@@ -6139,20 +6278,48 @@ let InventoryOperationService = class InventoryOperationService {
             });
             if (!existingItem)
                 throw new common_1.HttpException('Item no encontrado', common_1.HttpStatus.NOT_FOUND);
+            const copyIds = Array.isArray(entriesDto.copyIds)
+                ? entriesDto.copyIds
+                : [];
+            const quantity = entriesDto.quantity;
+            if (copyIds.length > 0) {
+                const retired = await (0, copies_1.applyCopyStatus)(tx, 'item', entriesDto.itemId, copyIds, client_1.CopyStatus.BAJA, copies_1.CAN_DROP);
+                const operations = [];
+                for (const copy of retired) {
+                    operations.push(await tx.itemOperation.create({
+                        data: {
+                            itemId: entriesDto.itemId,
+                            copyId: copy.id,
+                            quantity: 1,
+                            type: 'BAJA',
+                            personNames: entriesDto.personNames,
+                            personSurNames: entriesDto.personSurNames,
+                        },
+                    }));
+                }
+                return {
+                    status: 'success',
+                    message: `Bajas añadidas: ${operations.length} ejemplar(es)`,
+                    operations,
+                };
+            }
+            if (!quantity || quantity <= 0) {
+                throw new common_1.BadRequestException('Indica una cantidad o selecciona los ejemplares a dar de baja');
+            }
             const copies = await tx.itemCopy.findMany({
                 where: { itemId: entriesDto.itemId },
                 orderBy: { createdAt: 'asc' },
             });
             if (copies.length > 0) {
-                const removable = copies.filter((c) => c.status !== client_1.CopyStatus.PRESTADO);
-                if (removable.length < entriesDto.quantity) {
+                const removable = copies.filter((c) => copies_1.CAN_DROP.includes(c.status));
+                if (removable.length < quantity) {
                     throw new common_1.BadRequestException('Hay prestamos pendientes, las bajas no pueden tener un valor superior a la cantidad de stock disponible');
                 }
                 const ordered = [
                     ...removable.filter((c) => c.status === client_1.CopyStatus.DISPONIBLE),
                     ...removable.filter((c) => c.status !== client_1.CopyStatus.DISPONIBLE),
                 ];
-                for (let i = 0; i < entriesDto.quantity; i += 1) {
+                for (let i = 0; i < quantity; i += 1) {
                     await tx.itemCopy.update({
                         where: { id: ordered[i].id },
                         data: { status: client_1.CopyStatus.BAJA },
@@ -6162,21 +6329,21 @@ let InventoryOperationService = class InventoryOperationService {
             }
             else {
                 const difference = existingItem.totalStock - existingItem.availableStock;
-                const newValue = existingItem.totalStock - entriesDto.quantity - difference;
+                const newValue = existingItem.totalStock - quantity - difference;
                 if (newValue < 0)
                     throw new common_1.BadRequestException('Hay prestamos pendientes, las bajas no pueden tener un valor superior a la cantidad de stock disponible');
                 await tx.item.update({
                     where: { id: entriesDto.itemId },
                     data: {
-                        availableStock: { decrement: entriesDto.quantity },
-                        totalStock: { decrement: entriesDto.quantity },
+                        availableStock: { decrement: quantity },
+                        totalStock: { decrement: quantity },
                     },
                 });
             }
             await tx.itemOperation.create({
                 data: {
                     itemId: entriesDto.itemId,
-                    quantity: entriesDto.quantity,
+                    quantity,
                     type: 'BAJA',
                     personNames: entriesDto.personNames,
                     personSurNames: entriesDto.personSurNames,
@@ -6192,6 +6359,33 @@ let InventoryOperationService = class InventoryOperationService {
             });
             if (!existingItem)
                 throw new common_1.HttpException('Item no encontrado', common_1.HttpStatus.NOT_FOUND);
+            const copyIds = Array.isArray(entriesDto.copyIds)
+                ? entriesDto.copyIds
+                : [];
+            if (copyIds.length > 0) {
+                const reactivated = await (0, copies_1.applyCopyStatus)(tx, 'item', entriesDto.itemId, copyIds, client_1.CopyStatus.DISPONIBLE, copies_1.CAN_ENTER);
+                const operations = [];
+                for (const copy of reactivated) {
+                    operations.push(await tx.itemOperation.create({
+                        data: {
+                            itemId: entriesDto.itemId,
+                            copyId: copy.id,
+                            quantity: 1,
+                            type: 'ENTRADA',
+                            personNames: entriesDto.personNames,
+                            personSurNames: entriesDto.personSurNames,
+                        },
+                    }));
+                }
+                return {
+                    status: 'success',
+                    message: `Entradas añadidas: ${operations.length} ejemplar(es) reactivado(s)`,
+                    operations,
+                };
+            }
+            if (!entriesDto.quantity || entriesDto.quantity <= 0) {
+                throw new common_1.BadRequestException('Indica una cantidad o selecciona los ejemplares a reactivar');
+            }
             await (0, copies_1.createItemCopies)(tx, existingItem, entriesDto.quantity, Array.isArray(entriesDto.codes) ? entriesDto.codes : []);
             await (0, copies_1.recalcItemStock)(tx, entriesDto.itemId);
             await tx.itemOperation.create({
@@ -6350,6 +6544,54 @@ let InventoryOperationService = class InventoryOperationService {
             return { status: 'success', message: 'Item Devuelto' };
         });
     }
+    async dropLoan(id) {
+        return this.prisma.$transaction(async (tx) => {
+            const existingLoan = await tx.itemOperation.findUnique({ where: { id } });
+            if (!existingLoan)
+                throw new common_1.HttpException('Préstamo no encontrado', common_1.HttpStatus.NOT_FOUND);
+            if (existingLoan.type !== client_1.OperationType.PRESTAMO)
+                throw new common_1.BadRequestException('Sólo puedes dar de baja un préstamo en curso');
+            if (existingLoan.wasSettled)
+                throw new common_1.BadRequestException('Este préstamo ya fue cerrado');
+            await tx.itemOperation.create({
+                data: {
+                    type: 'BAJA',
+                    quantity: existingLoan.quantity,
+                    itemId: existingLoan.itemId,
+                    copyId: existingLoan.copyId,
+                    observations: existingLoan.observations,
+                    personId: existingLoan.personId,
+                    personNames: existingLoan.personNames,
+                    personSurNames: existingLoan.personSurNames,
+                },
+            });
+            await tx.itemOperation.update({
+                where: { id },
+                data: { wasSettled: true },
+            });
+            if (existingLoan.copyId) {
+                await tx.itemCopy.update({
+                    where: { id: existingLoan.copyId },
+                    data: { status: client_1.CopyStatus.BAJA },
+                });
+                await (0, copies_1.recalcItemStock)(tx, existingLoan.itemId);
+            }
+            else {
+                const existingItem = await tx.item.findUnique({
+                    where: { id: existingLoan.itemId },
+                });
+                if (!existingItem)
+                    throw new common_1.HttpException('Item no encontrado', common_1.HttpStatus.NOT_FOUND);
+                await tx.item.update({
+                    where: { id: existingLoan.itemId },
+                    data: {
+                        totalStock: Math.max(0, existingItem.totalStock - existingLoan.quantity),
+                    },
+                });
+            }
+            return { status: 'success', message: 'El ejemplar fue dado de baja' };
+        });
+    }
     async findAllLoans(query) {
         const where = {};
         const limit = parseInt(query.limit) || 10;
@@ -6500,6 +6742,9 @@ let InventoryOperationController = class InventoryOperationController {
     settle(id) {
         return this.inventoryOperationService.settle(id);
     }
+    dropLoan(id) {
+        return this.inventoryOperationService.dropLoan(id);
+    }
     create(createInventoryOperationDto) {
         return this.inventoryOperationService.create(createInventoryOperationDto);
     }
@@ -6565,6 +6810,15 @@ __decorate([
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", void 0)
 ], InventoryOperationController.prototype, "settle", null);
+__decorate([
+    (0, common_1.Patch)('drop-loan/:id'),
+    (0, roles_decorator_1.Roles)(client_1.Role.LIBRARIAN, client_1.Role.ADMIN),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
+    __param(0, (0, common_1.Param)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", void 0)
+], InventoryOperationController.prototype, "dropLoan", null);
 __decorate([
     (0, common_1.Post)(),
     (0, roles_decorator_1.Roles)(client_1.Role.LIBRARIAN, client_1.Role.ADMIN),
@@ -6674,15 +6928,22 @@ class EntrieDto {
 }
 exports.EntrieDto = EntrieDto;
 __decorate([
-    (0, class_transformer_1.Transform)(({ value }) => parseInt(value)),
+    (0, class_transformer_1.Transform)(({ value }) => (value === '' || value === null || value === undefined ? undefined : parseInt(value))),
     (0, class_validator_1.IsInt)({ message: 'La cantidad debe ser un numero entero' }),
     (0, class_validator_1.IsPositive)({ message: 'La cantidad debe ser un numero positivo' }),
+    (0, class_validator_1.IsOptional)(),
     __metadata("design:type", Number)
 ], EntrieDto.prototype, "quantity", void 0);
 __decorate([
     (0, class_validator_1.IsDefined)({ message: 'Debes incluir un Item para dar entradas' }),
     __metadata("design:type", String)
 ], EntrieDto.prototype, "itemId", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsArray)({ message: 'Los ejemplares deben ser un arreglo' }),
+    (0, class_validator_1.IsString)({ each: true, message: 'Cada ejemplar debe ser una cadena de texto' }),
+    __metadata("design:type", Array)
+], EntrieDto.prototype, "copyIds", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsArray)({ message: 'Los códigos deben ser un arreglo' }),

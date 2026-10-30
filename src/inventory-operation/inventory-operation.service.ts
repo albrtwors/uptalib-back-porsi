@@ -11,7 +11,7 @@ import { PrismaService } from 'prisma/prisma.service';
 import { LoanDto } from './dto/loan-dto';
 import { EntrieDto } from './dto/entrie-dto';
 import { DropDto } from './dto/drop-dto';
-import { createItemCopies, recalcItemStock } from '../utils/copies';
+import { applyCopyStatus, CAN_DROP, CAN_ENTER, createItemCopies, recalcItemStock } from '../utils/copies';
 import { bulkSummaryMessage } from '../utils/bulk';
 
 @Injectable()
@@ -29,16 +29,61 @@ export class InventoryOperationService {
       if (!existingItem)
         throw new HttpException('Item no encontrado', HttpStatus.NOT_FOUND);
 
+      const copyIds: string[] = Array.isArray(entriesDto.copyIds)
+        ? entriesDto.copyIds
+        : [];
+      const quantity = entriesDto.quantity;
+
+      // 🎯 Baja de ejemplares específicos: una operación por cada ejemplar retirado
+      if (copyIds.length > 0) {
+        const retired = await applyCopyStatus(
+          tx,
+          'item',
+          entriesDto.itemId,
+          copyIds,
+          CopyStatus.BAJA,
+          CAN_DROP,
+        );
+
+        const operations = [];
+        for (const copy of retired) {
+          operations.push(
+            await tx.itemOperation.create({
+              data: {
+                itemId: entriesDto.itemId,
+                copyId: copy.id,
+                quantity: 1,
+                type: 'BAJA',
+                personNames: entriesDto.personNames,
+                personSurNames: entriesDto.personSurNames,
+              },
+            }),
+          );
+        }
+
+        return {
+          status: 'success',
+          message: `Bajas añadidas: ${operations.length} ejemplar(es)`,
+          operations,
+        };
+      }
+
+      if (!quantity || quantity <= 0) {
+        throw new BadRequestException(
+          'Indica una cantidad o selecciona los ejemplares a dar de baja',
+        );
+      }
+
       const copies = await tx.itemCopy.findMany({
         where: { itemId: entriesDto.itemId },
         orderBy: { createdAt: 'asc' },
       });
 
       if (copies.length > 0) {
-        const removable = copies.filter(
-          (c: any) => c.status !== CopyStatus.PRESTADO,
+        const removable = copies.filter((c: any) =>
+          CAN_DROP.includes(c.status),
         );
-        if (removable.length < entriesDto.quantity) {
+        if (removable.length < quantity) {
           throw new BadRequestException(
             'Hay prestamos pendientes, las bajas no pueden tener un valor superior a la cantidad de stock disponible',
           );
@@ -49,7 +94,7 @@ export class InventoryOperationService {
           ...removable.filter((c: any) => c.status !== CopyStatus.DISPONIBLE),
         ];
 
-        for (let i = 0; i < entriesDto.quantity; i += 1) {
+        for (let i = 0; i < quantity; i += 1) {
           await tx.itemCopy.update({
             where: { id: ordered[i].id },
             data: { status: CopyStatus.BAJA },
@@ -60,8 +105,7 @@ export class InventoryOperationService {
       } else {
         const difference =
           existingItem.totalStock - existingItem.availableStock;
-        const newValue =
-          existingItem.totalStock - entriesDto.quantity - difference;
+        const newValue = existingItem.totalStock - quantity - difference;
         if (newValue < 0)
           throw new BadRequestException(
             'Hay prestamos pendientes, las bajas no pueden tener un valor superior a la cantidad de stock disponible',
@@ -70,8 +114,8 @@ export class InventoryOperationService {
         await tx.item.update({
           where: { id: entriesDto.itemId },
           data: {
-            availableStock: { decrement: entriesDto.quantity },
-            totalStock: { decrement: entriesDto.quantity },
+            availableStock: { decrement: quantity },
+            totalStock: { decrement: quantity },
           },
         });
       }
@@ -79,7 +123,7 @@ export class InventoryOperationService {
       await tx.itemOperation.create({
         data: {
           itemId: entriesDto.itemId,
-          quantity: entriesDto.quantity,
+          quantity,
           type: 'BAJA',
           personNames: entriesDto.personNames,
           personSurNames: entriesDto.personSurNames,
@@ -97,6 +141,50 @@ export class InventoryOperationService {
       });
       if (!existingItem)
         throw new HttpException('Item no encontrado', HttpStatus.NOT_FOUND);
+
+      const copyIds: string[] = Array.isArray(entriesDto.copyIds)
+        ? entriesDto.copyIds
+        : [];
+
+      // 🎯 Entrada sobre ejemplares ya registrados: se reactivan en vez de crear nuevos
+      if (copyIds.length > 0) {
+        const reactivated = await applyCopyStatus(
+          tx,
+          'item',
+          entriesDto.itemId,
+          copyIds,
+          CopyStatus.DISPONIBLE,
+          CAN_ENTER,
+        );
+
+        const operations = [];
+        for (const copy of reactivated) {
+          operations.push(
+            await tx.itemOperation.create({
+              data: {
+                itemId: entriesDto.itemId,
+                copyId: copy.id,
+                quantity: 1,
+                type: 'ENTRADA',
+                personNames: entriesDto.personNames,
+                personSurNames: entriesDto.personSurNames,
+              },
+            }),
+          );
+        }
+
+        return {
+          status: 'success',
+          message: `Entradas añadidas: ${operations.length} ejemplar(es) reactivado(s)`,
+          operations,
+        };
+      }
+
+      if (!entriesDto.quantity || entriesDto.quantity <= 0) {
+        throw new BadRequestException(
+          'Indica una cantidad o selecciona los ejemplares a reactivar',
+        );
+      }
 
       // 🎯 Cada entrada materializa nuevos ejemplares individuales
       await createItemCopies(
@@ -294,6 +382,64 @@ export class InventoryOperationService {
       }
 
       return { status: 'success', message: 'Item Devuelto' };
+    });
+  }
+
+  /**
+   * El ejemplar prestado se perdió o se dañó: sale del stock como BAJA y el
+   * préstamo queda cerrado sin registrar una devolución.
+   */
+  async dropLoan(id: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const existingLoan = await tx.itemOperation.findUnique({ where: { id } });
+      if (!existingLoan)
+        throw new HttpException('Préstamo no encontrado', HttpStatus.NOT_FOUND);
+      if (existingLoan.type !== OperationType.PRESTAMO)
+        throw new BadRequestException('Sólo puedes dar de baja un préstamo en curso');
+      if (existingLoan.wasSettled)
+        throw new BadRequestException('Este préstamo ya fue cerrado');
+
+      await tx.itemOperation.create({
+        data: {
+          type: 'BAJA',
+          quantity: existingLoan.quantity,
+          itemId: existingLoan.itemId,
+          copyId: existingLoan.copyId,
+          observations: existingLoan.observations,
+          personId: existingLoan.personId,
+          personNames: existingLoan.personNames,
+          personSurNames: existingLoan.personSurNames,
+        },
+      });
+
+      await tx.itemOperation.update({
+        where: { id },
+        data: { wasSettled: true },
+      });
+
+      if (existingLoan.copyId) {
+        await tx.itemCopy.update({
+          where: { id: existingLoan.copyId },
+          data: { status: CopyStatus.BAJA },
+        });
+        await recalcItemStock(tx, existingLoan.itemId);
+      } else {
+        // 💡 Préstamo antiguo sin ejemplar: se retiran las unidades del stock total
+        const existingItem = await tx.item.findUnique({
+          where: { id: existingLoan.itemId },
+        });
+        if (!existingItem)
+          throw new HttpException('Item no encontrado', HttpStatus.NOT_FOUND);
+
+        await tx.item.update({
+          where: { id: existingLoan.itemId },
+          data: {
+            totalStock: Math.max(0, existingItem.totalStock - existingLoan.quantity),
+          },
+        });
+      }
+
+      return { status: 'success', message: 'El ejemplar fue dado de baja' };
     });
   }
 

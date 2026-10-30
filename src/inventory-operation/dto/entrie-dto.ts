@@ -3,13 +3,20 @@ import { Transform } from "class-transformer";
 import { IsArray, IsDefined, IsInt, IsNotEmpty, IsOptional, IsPositive, IsString, MaxLength, MinLength } from "class-validator";
 
 export class EntrieDto {
-    @Transform(({ value }: any) => parseInt(value))
+    @Transform(({ value }: any) => (value === '' || value === null || value === undefined ? undefined : parseInt(value)))
     @IsInt({ message: 'La cantidad debe ser un numero entero' })
     @IsPositive({ message: 'La cantidad debe ser un numero positivo' })
-    quantity: number
+    @IsOptional()
+    quantity?: number
 
     @IsDefined({ message: 'Debes incluir un Item para dar entradas' })
     itemId: string
+
+    // 🎯 Ejemplares específicos: en la entrada se reactivan y en la baja se retiran del stock
+    @IsOptional()
+    @IsArray({ message: 'Los ejemplares deben ser un arreglo' })
+    @IsString({ each: true, message: 'Cada ejemplar debe ser una cadena de texto' })
+    copyIds?: string[]
 
     // 🎯 Códigos opcionales para los nuevos ejemplares (si no se envían se autogeneran)
     @IsOptional()

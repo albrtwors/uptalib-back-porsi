@@ -64,6 +64,14 @@ export class PhysicalBookOperationController {
 
   }
 
+  @Patch('drop-loan/:id')
+  @HttpCode(HttpStatus.OK)
+  @Roles(Role.LIBRARIAN, Role.ADMIN)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  dropLoan(@Param('id') id: string) {
+    return this.physicalBookOperationService.dropLoan(id)
+  }
+
 
   @Post('bulk-delete')
   @Roles(Role.LIBRARIAN, Role.ADMIN)

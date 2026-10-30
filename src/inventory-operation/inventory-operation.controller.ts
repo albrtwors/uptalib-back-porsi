@@ -53,6 +53,13 @@ export class InventoryOperationController {
     return this.inventoryOperationService.settle(id)
   }
 
+  @Patch('drop-loan/:id')
+  @Roles(Role.LIBRARIAN, Role.ADMIN)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  dropLoan(@Param('id') id: string) {
+    return this.inventoryOperationService.dropLoan(id)
+  }
+
   @Post()
   @Roles(Role.LIBRARIAN, Role.ADMIN)
   @UseGuards(JwtAuthGuard, RolesGuard)

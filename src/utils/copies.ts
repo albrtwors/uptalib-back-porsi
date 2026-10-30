@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, HttpException, HttpStatus } from '@nestjs/common';
 import { CopyStatus } from '@prisma/client';
 
 /**
@@ -337,4 +337,69 @@ export async function recalcItemStock(tx: any, itemId: string): Promise<StockSum
   });
 
   return { ...summary, status };
+}
+
+/** Estados que pueden darse de baja: un ejemplar prestado no se retira del stock. */
+export const CAN_DROP: CopyStatus[] = [CopyStatus.DISPONIBLE, CopyStatus.MANTENIMIENTO];
+
+/** Estados que puede reactivar una entrada materializada sobre ejemplares ya registrados. */
+export const CAN_ENTER: CopyStatus[] = [CopyStatus.BAJA, CopyStatus.MANTENIMIENTO];
+
+export type CopyKind = 'book' | 'item';
+
+const COPY_ACCESS = {
+  book: { model: 'bookCopy', fk: 'bookId', recalc: recalcBookStock },
+  item: { model: 'itemCopy', fk: 'itemId', recalc: recalcItemStock },
+} as const;
+
+/**
+ * Cambia el estado de ejemplares concretos (los seleccionados en la operación)
+ * y recalcula el stock derivado. Valida que existan, que pertenezcan al
+ * libro/artículo y que estén en uno de los estados permitidos.
+ */
+export async function applyCopyStatus(
+  tx: any,
+  kind: CopyKind,
+  parentId: string,
+  copyIds: string[],
+  target: CopyStatus,
+  allowed: CopyStatus[],
+) {
+  const access = COPY_ACCESS[kind];
+  const ids = [...new Set((copyIds ?? []).map((id) => `${id}`.trim()).filter(Boolean))];
+
+  if (ids.length === 0) throw new BadRequestException('Debes seleccionar al menos un ejemplar');
+
+  const copies = await tx[access.model].findMany({
+    where: { id: { in: ids } },
+    select: { id: true, code: true, status: true, [access.fk]: true },
+  });
+
+  if (copies.length !== ids.length) {
+    throw new HttpException('Uno o más ejemplares no existen', HttpStatus.NOT_FOUND);
+  }
+
+  const wrongParent = copies.find((c: any) => c[access.fk] !== parentId);
+  if (wrongParent) {
+    throw new BadRequestException(`El ejemplar ${wrongParent.code} no pertenece a este recurso`);
+  }
+
+  const invalid = copies.find((c: any) => !allowed.includes(c.status));
+  if (invalid) {
+    throw new BadRequestException(`El ejemplar ${invalid.code} no permite esta operación (estado actual: ${invalid.status})`);
+  }
+
+  const updated = [];
+  for (const copy of copies) {
+    updated.push(
+      await tx[access.model].update({
+        where: { id: copy.id },
+        data: { status: target },
+      }),
+    );
+  }
+
+  await access.recalc(tx, parentId);
+
+  return updated;
 }

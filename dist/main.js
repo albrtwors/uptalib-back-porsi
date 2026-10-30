@@ -50,7 +50,7 @@ async function bootstrapServer() {
         return cachedExpressApp;
     }
     const app = await core_1.NestFactory.create(app_module_1.AppModule);
-    const cookieParser = __webpack_require__(131);
+    const cookieParser = __webpack_require__(133);
     const localConfig = { origin: ['http://localhost:3000'], credentials: true };
     const isLocal = process.env.isLocal;
     app.enableCors(isLocal == 'true' ? localConfig : {});
@@ -76,7 +76,7 @@ async function bootstrapServer() {
 if (process.env.isLocal === 'true') {
     async function bootstrapLocal() {
         const app = await core_1.NestFactory.create(app_module_1.AppModule);
-        const cookieParser = __webpack_require__(131);
+        const cookieParser = __webpack_require__(133);
         const localConfig = { origin: ['http://localhost:3000'], credentials: true };
         app.enableCors(localConfig);
         app.use(cookieParser());
@@ -120,22 +120,22 @@ const auth_module_1 = __webpack_require__(8);
 const user_module_1 = __webpack_require__(27);
 const books_module_1 = __webpack_require__(36);
 const inventory_module_1 = __webpack_require__(47);
-const serve_static_1 = __webpack_require__(56);
-const path_1 = __webpack_require__(57);
-const platform_express_1 = __webpack_require__(58);
-const physical_books_module_1 = __webpack_require__(59);
-const category_module_1 = __webpack_require__(65);
-const author_module_1 = __webpack_require__(70);
-const pnf_module_1 = __webpack_require__(75);
-const physical_book_operation_module_1 = __webpack_require__(80);
-const item_type_module_1 = __webpack_require__(88);
-const inventory_operation_module_1 = __webpack_require__(93);
-const logs_module_1 = __webpack_require__(101);
-const backup_module_1 = __webpack_require__(107);
-const sync_module_1 = __webpack_require__(111);
-const ai_books_module_1 = __webpack_require__(116);
-const ai_inventory_module_1 = __webpack_require__(123);
-const ai_physical_book_module_1 = __webpack_require__(127);
+const serve_static_1 = __webpack_require__(58);
+const path_1 = __webpack_require__(59);
+const platform_express_1 = __webpack_require__(60);
+const physical_books_module_1 = __webpack_require__(61);
+const category_module_1 = __webpack_require__(67);
+const author_module_1 = __webpack_require__(72);
+const pnf_module_1 = __webpack_require__(77);
+const physical_book_operation_module_1 = __webpack_require__(82);
+const item_type_module_1 = __webpack_require__(90);
+const inventory_operation_module_1 = __webpack_require__(95);
+const logs_module_1 = __webpack_require__(103);
+const backup_module_1 = __webpack_require__(109);
+const sync_module_1 = __webpack_require__(113);
+const ai_books_module_1 = __webpack_require__(118);
+const ai_inventory_module_1 = __webpack_require__(125);
+const ai_physical_book_module_1 = __webpack_require__(129);
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -806,17 +806,88 @@ let MailService = MailService_1 = class MailService {
     constructor(configService) {
         this.configService = configService;
         this.logger = new common_1.Logger(MailService_1.name);
+        const user = this.getEnv('MAIL_USER');
+        const password = this.getEnv('MAIL_PASSWORD');
+        const clientId = this.getEnv('GOOGLE_CLIENT_ID');
+        const clientSecret = this.getEnv('GOOGLE_CLIENT_SECRET');
+        const refreshToken = this.getEnv('GOOGLE_REFRESH_TOKEN');
+        const configuredService = this.getEnv('MAIL_SERVICE')?.toLowerCase();
+        const host = this.getEnv('MAIL_HOST') ||
+            (user?.toLowerCase().includes('@gmail.com')
+                ? 'smtp.gmail.com'
+                : undefined);
+        const port = Number(this.getEnv('MAIL_PORT')) || 587;
+        const secureValue = this.getEnv('MAIL_SECURE');
+        const secure = secureValue ? secureValue === 'true' : port === 465;
+        const useGmail = configuredService === 'gmail' ||
+            configuredService === 'google' ||
+            host?.toLowerCase() === 'smtp.gmail.com' ||
+            user?.toLowerCase().endsWith('@gmail.com');
+        const hasGoogleOAuth = Boolean(user && clientId && clientSecret && refreshToken);
+        const hasPassword = Boolean(user && password);
         this.from =
-            this.configService.get('MAIL_FROM') || 'UPTALib <no-reply@uptalib.com>';
-        this.transporter = nodemailer.createTransport({
-            host: this.configService.get('MAIL_HOST'),
-            port: Number(this.configService.get('MAIL_PORT')) || 587,
-            secure: this.configService.get('MAIL_SECURE') === 'true',
-            auth: {
-                user: this.configService.get('MAIL_USER'),
-                pass: this.configService.get('MAIL_PASSWORD'),
-            },
-        });
+            this.getEnv('MAIL_FROM') ||
+                (user ? `UPTALib <${user}>` : 'UPTALib <no-reply@uptalib.com>');
+        if (hasGoogleOAuth) {
+            this.transporter = nodemailer.createTransport({
+                service: 'gmail',
+                auth: {
+                    type: 'OAuth2',
+                    user,
+                    clientId,
+                    clientSecret,
+                    refreshToken,
+                },
+            });
+            this.mode = 'gmail-oauth2';
+        }
+        else if (hasPassword && useGmail) {
+            this.transporter = nodemailer.createTransport({
+                service: 'gmail',
+                auth: {
+                    user,
+                    pass: password,
+                },
+            });
+            this.mode = 'gmail-app-password';
+        }
+        else if (hasPassword) {
+            this.transporter = nodemailer.createTransport({
+                host,
+                port,
+                secure,
+                auth: {
+                    user,
+                    pass: password,
+                },
+            });
+            this.mode = 'smtp';
+        }
+        else if (host && !useGmail) {
+            this.transporter = nodemailer.createTransport({
+                host,
+                port,
+                secure,
+            });
+            this.mode = 'smtp';
+        }
+        else {
+            this.transporter = null;
+            this.mode = null;
+        }
+        if (!this.transporter) {
+            this.logger.warn('Correo no configurado. Define GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN y MAIL_USER, o MAIL_USER y MAIL_PASSWORD (contraseña de aplicación de Gmail).');
+            return;
+        }
+        this.logger.log(`Servicio de correo configurado en modo ${this.mode}`);
+    }
+    getEnv(key) {
+        const value = this.configService.get(key);
+        if (value === undefined || value === null) {
+            return undefined;
+        }
+        const normalized = String(value).trim();
+        return normalized.length > 0 ? normalized : undefined;
     }
     async sendVerificationCode(to, code) {
         await this.send(to, 'Verifica tu cuenta de UPTALib', `Tu código de verificación es: ${code}. Expira en 15 minutos.`, 'Verifica tu cuenta');
@@ -825,8 +896,12 @@ let MailService = MailService_1 = class MailService {
         await this.send(to, 'Recuperación de contraseña - UPTALib', `Tu código para restablecer la contraseña es: ${code}. Expira en 15 minutos.`, 'Restablece tu contraseña');
     }
     async send(to, subject, message, heading) {
+        if (!this.transporter) {
+            this.logger.error('No se intentó enviar el correo porque el servicio no está configurado');
+            throw new common_1.ServiceUnavailableException('El servicio de correo no está configurado. Contacta al administrador.');
+        }
         try {
-            await this.transporter.sendMail({
+            const info = await this.transporter.sendMail({
                 from: this.from,
                 to,
                 subject,
@@ -840,9 +915,19 @@ let MailService = MailService_1 = class MailService {
           </div>
         `,
             });
+            if (info.rejected?.length) {
+                this.logger.warn(`El correo fue rechazado para: ${info.rejected.join(', ')}`);
+            }
+            if (info.messageId) {
+                this.logger.log(`Correo enviado con id ${info.messageId} en modo ${this.mode}`);
+            }
         }
         catch (error) {
-            this.logger.error(`No se pudo enviar el correo a ${to}`, error);
+            const mailError = error;
+            const details = [mailError.message, mailError.code, mailError.response]
+                .filter(Boolean)
+                .join(' | ');
+            this.logger.error(`No se pudo enviar el correo a ${to}: ${details}`, mailError.stack);
             throw new common_1.InternalServerErrorException('No se pudo enviar el correo. Inténtalo de nuevo más tarde.');
         }
     }
@@ -2532,7 +2617,7 @@ let InventoryService = class InventoryService {
     constructor(prisma) {
         this.prisma = prisma;
     }
-    async resolveAuthorIds(tx, ids = [], names = []) {
+    async resolveTypeIds(tx, ids = [], names = []) {
         const resolved = [];
         for (const id of ids) {
             if (id && !resolved.includes(id))
@@ -2542,51 +2627,16 @@ let InventoryService = class InventoryService {
             const cleaned = `${name}`.trim();
             if (!cleaned)
                 continue;
-            let author = await tx.author.findFirst({
-                where: { name: { equals: cleaned, mode: 'insensitive' } }
-            });
-            if (!author) {
-                author = await tx.author.create({ data: { name: cleaned } });
-            }
-            if (!resolved.includes(author.id))
-                resolved.push(author.id);
-        }
-        return resolved;
-    }
-    async resolveCategoryIds(tx, ids = [], names = []) {
-        const resolved = [];
-        for (const id of ids) {
-            if (id && !resolved.includes(id))
-                resolved.push(id);
-        }
-        for (const name of names) {
-            const cleaned = `${name}`.trim();
-            if (!cleaned)
-                continue;
-            let category = await tx.category.findFirst({
-                where: { name: { equals: cleaned, mode: 'insensitive' } }
-            });
-            if (!category) {
-                category = await tx.category.create({ data: { name: cleaned } });
-            }
-            if (!resolved.includes(category.id))
-                resolved.push(category.id);
-        }
-        return resolved;
-    }
-    async resolveTypeId(tx, typeId, typeName) {
-        let resolvedTypeId = typeId;
-        if (!resolvedTypeId && typeName && typeName.trim() !== '') {
-            const cleanedTypeName = typeName.trim();
             let itemType = await tx.itemType.findFirst({
-                where: { name: { equals: cleanedTypeName, mode: 'insensitive' } }
+                where: { name: { equals: cleaned, mode: 'insensitive' } },
             });
             if (!itemType) {
-                itemType = await tx.itemType.create({ data: { name: cleanedTypeName } });
+                itemType = await tx.itemType.create({ data: { name: cleaned } });
             }
-            resolvedTypeId = itemType.id;
+            if (!resolved.includes(itemType.id))
+                resolved.push(itemType.id);
         }
-        return resolvedTypeId;
+        return resolved;
     }
     async createCopies(tx, item, quantity, requestedCodes = [], extra = {}) {
         return (0, copies_1.createItemCopies)(tx, item, quantity, requestedCodes, extra);
@@ -2594,7 +2644,7 @@ let InventoryService = class InventoryService {
     async reconcileCopies(tx, item, targetTotal, requestedCodes = []) {
         const copies = await tx.itemCopy.findMany({
             where: { itemId: item.id },
-            orderBy: { createdAt: 'asc' }
+            orderBy: { createdAt: 'asc' },
         });
         if (copies.length === 0)
             return false;
@@ -2610,12 +2660,12 @@ let InventoryService = class InventoryService {
             }
             const ordered = [
                 ...removable.filter((c) => c.status === client_1.CopyStatus.DISPONIBLE),
-                ...removable.filter((c) => c.status !== client_1.CopyStatus.DISPONIBLE)
+                ...removable.filter((c) => c.status !== client_1.CopyStatus.DISPONIBLE),
             ];
             for (let i = 0; i < Math.abs(diff); i += 1) {
                 await tx.itemCopy.update({
                     where: { id: ordered[i].id },
-                    data: { status: client_1.CopyStatus.BAJA }
+                    data: { status: client_1.CopyStatus.BAJA },
                 });
             }
         }
@@ -2623,53 +2673,34 @@ let InventoryService = class InventoryService {
     }
     async create(createInventoryDto) {
         return this.prisma.$transaction(async (tx) => {
-            const { typeId, typeName, stock, authorId, authorName, authorIds = [], authorNames = [], categoryId, categoryName, categoryIds = [], categoryNames = [], copyCodes = [], ...restOfDto } = createInventoryDto;
-            const resolvedTypeId = await this.resolveTypeId(tx, typeId, typeName);
-            const resolvedAuthorIds = await this.resolveAuthorIds(tx, [
-                ...(authorId ? [authorId] : []),
-                ...authorIds
-            ], [
-                ...(authorName ? [authorName] : []),
-                ...authorNames
-            ]);
-            const resolvedCategoryIds = await this.resolveCategoryIds(tx, [
-                ...(categoryId ? [categoryId] : []),
-                ...categoryIds
-            ], [
-                ...(categoryName ? [categoryName] : []),
-                ...categoryNames
-            ]);
+            const { typeId, typeName, typeIds = [], typeNames = [], stock, copyCodes = [], ...restOfDto } = createInventoryDto;
+            const resolvedTypeIds = await this.resolveTypeIds(tx, [...(typeId ? [typeId] : []), ...typeIds], [...(typeName ? [typeName] : []), ...typeNames]);
+            if (resolvedTypeIds.length === 0) {
+                throw new common_1.BadRequestException('Debes seleccionar al menos un tipo');
+            }
             const parsedStock = parseInt(stock) || 0;
             const item = await tx.item.create({
                 data: {
                     ...restOfDto,
-                    typeId: resolvedTypeId || undefined,
                     availableStock: 0,
                     totalStock: 0,
                     status: 'DISPONIBLE',
-                    authors: {
-                        connect: resolvedAuthorIds.map(id => ({ id }))
+                    types: {
+                        connect: resolvedTypeIds.map((id) => ({ id })),
                     },
-                    categories: {
-                        connect: resolvedCategoryIds.map(id => ({ id }))
-                    }
                 },
                 include: {
-                    type: true,
-                    authors: { select: { id: true, name: true } },
-                    categories: { select: { id: true, name: true } }
-                }
+                    types: { select: { id: true, name: true } },
+                },
             });
             await this.createCopies(tx, item, parsedStock, Array.isArray(copyCodes) ? copyCodes : []);
             await (0, copies_1.recalcItemStock)(tx, item.id);
             const withStock = await tx.item.findUnique({
                 where: { id: item.id },
                 include: {
-                    type: true,
-                    authors: { select: { id: true, name: true } },
-                    categories: { select: { id: true, name: true } },
-                    copies: { orderBy: { createdAt: 'asc' } }
-                }
+                    types: { select: { id: true, name: true } },
+                    copies: { orderBy: { createdAt: 'asc' } },
+                },
             });
             return { item: withStock, message: 'Item añadido exitosamente' };
         });
@@ -2687,52 +2718,26 @@ let InventoryService = class InventoryService {
         }
         if (query.type) {
             const typeFilter = {
-                type: {
-                    name: { contains: query.type, mode: 'insensitive' }
-                }
+                types: {
+                    some: {
+                        name: { contains: query.type, mode: 'insensitive' },
+                    },
+                },
             };
             if (!where.AND)
                 where.AND = [typeFilter];
             else
                 where.AND.push(typeFilter);
         }
-        if (query.categoryName) {
-            const categoryFilter = {
-                categories: {
-                    some: {
-                        name: { contains: query.categoryName, mode: 'insensitive' }
-                    }
-                }
-            };
-            if (!where.AND)
-                where.AND = [categoryFilter];
-            else
-                where.AND.push(categoryFilter);
-        }
-        if (query.authorName) {
-            const authorFilter = {
-                authors: {
-                    some: {
-                        name: { contains: query.authorName, mode: 'insensitive' }
-                    }
-                }
-            };
-            if (!where.AND)
-                where.AND = [authorFilter];
-            else
-                where.AND.push(authorFilter);
-        }
-        const totalPages = Math.ceil(await this.prisma.item.count({ where }) / take);
+        const totalPages = Math.ceil((await this.prisma.item.count({ where })) / take);
         const data = await this.prisma.item.findMany({
             where,
             skip,
             take,
             include: {
-                type: true,
-                authors: { select: { id: true, name: true } },
-                categories: { select: { id: true, name: true } }
+                types: { select: { id: true, name: true } },
             },
-            orderBy: { createdAt: 'desc' }
+            orderBy: { createdAt: 'desc' },
         });
         return { data, totalPages };
     }
@@ -2740,11 +2745,9 @@ let InventoryService = class InventoryService {
         const item = await this.prisma.item.findUnique({
             where: { id },
             include: {
-                type: true,
-                authors: { select: { id: true, name: true } },
-                categories: { select: { id: true, name: true } },
-                copies: { orderBy: { createdAt: 'asc' } }
-            }
+                types: { select: { id: true, name: true } },
+                copies: { orderBy: { createdAt: 'asc' } },
+            },
         });
         if (!item)
             throw new common_1.HttpException('Item no encontrado', common_1.HttpStatus.NOT_FOUND);
@@ -2755,70 +2758,55 @@ let InventoryService = class InventoryService {
             const existingItem = await tx.item.findUnique({ where: { id } });
             if (!existingItem)
                 throw new common_1.HttpException('Item no encontrado', common_1.HttpStatus.NOT_FOUND);
-            const { typeId, typeName, stock, authorId, authorName, authorIds, authorNames, categoryId, categoryName, categoryIds, categoryNames, copyCodes, ...restOfDto } = updateInventoryDto;
-            const resolvedTypeId = await this.resolveTypeId(tx, typeId, typeName);
-            const resolvedAuthorIds = await this.resolveAuthorIds(tx, [
-                ...(authorId ? [authorId] : []),
-                ...(authorIds ?? [])
-            ], [
-                ...(authorName ? [authorName] : []),
-                ...(authorNames ?? [])
-            ]);
-            const resolvedCategoryIds = await this.resolveCategoryIds(tx, [
-                ...(categoryId ? [categoryId] : []),
-                ...(categoryIds ?? [])
-            ], [
-                ...(categoryName ? [categoryName] : []),
-                ...(categoryNames ?? [])
-            ]);
+            const { typeId, typeName, typeIds, typeNames, stock, copyCodes, ...restOfDto } = updateInventoryDto;
+            const typesProvided = typeId !== undefined ||
+                typeName !== undefined ||
+                typeIds !== undefined ||
+                typeNames !== undefined;
+            const resolvedTypeIds = typesProvided
+                ? await this.resolveTypeIds(tx, [...(typeId ? [typeId] : []), ...(typeIds ?? [])], [...(typeName ? [typeName] : []), ...(typeNames ?? [])])
+                : [];
+            if (typesProvided && resolvedTypeIds.length === 0) {
+                throw new common_1.BadRequestException('Debes seleccionar al menos un tipo');
+            }
             const targetTotal = stock !== undefined ? parseInt(stock) : existingItem.totalStock;
             const hasCopies = await this.reconcileCopies(tx, existingItem, targetTotal, Array.isArray(copyCodes) ? copyCodes : []);
             const updateData = {
                 ...restOfDto,
-                typeId: resolvedTypeId || undefined,
             };
             if (!hasCopies) {
                 const parsedStock = parseInt(stock) || existingItem.totalStock;
                 const newValue = (0, getDifference_1.default)({
                     oldAvailableStockValue: existingItem.availableStock,
                     oldCurrentStockValue: existingItem.totalStock,
-                    newStockValue: parsedStock
+                    newStockValue: parsedStock,
                 });
                 if (newValue < 0) {
-                    throw new common_1.HttpException("Hay préstamos pendientes que impiden que reduzcas tanto el stock", common_1.HttpStatus.BAD_REQUEST);
+                    throw new common_1.HttpException('Hay préstamos pendientes que impiden que reduzcas tanto el stock', common_1.HttpStatus.BAD_REQUEST);
                 }
                 updateData.availableStock = parsedStock;
                 updateData.totalStock = newValue;
                 updateData.status = 'DISPONIBLE';
             }
-            if (authorIds !== undefined || authorId !== undefined || authorNames !== undefined || authorName !== undefined) {
-                updateData.authors = {
-                    set: resolvedAuthorIds.map(id => ({ id }))
-                };
-            }
-            if (categoryIds !== undefined || categoryId !== undefined || categoryNames !== undefined || categoryName !== undefined) {
-                updateData.categories = {
-                    set: resolvedCategoryIds.map(id => ({ id }))
+            if (typesProvided) {
+                updateData.types = {
+                    set: resolvedTypeIds.map((id) => ({ id })),
                 };
             }
             let item = await tx.item.update({
                 where: { id },
                 data: updateData,
                 include: {
-                    type: true,
-                    authors: { select: { id: true, name: true } },
-                    categories: { select: { id: true, name: true } }
-                }
+                    types: { select: { id: true, name: true } },
+                },
             });
             if (hasCopies) {
                 await (0, copies_1.recalcItemStock)(tx, id);
                 item = await tx.item.findUnique({
                     where: { id },
                     include: {
-                        type: true,
-                        authors: { select: { id: true, name: true } },
-                        categories: { select: { id: true, name: true } }
-                    }
+                        types: { select: { id: true, name: true } },
+                    },
                 });
             }
             return { item, message: 'Item actualizado con éxito' };
@@ -2829,6 +2817,50 @@ let InventoryService = class InventoryService {
         const item = await this.prisma.item.delete({ where: { id } });
         return { item, message: 'Item Eliminado correctamente' };
     }
+    async bulkUpsert(records) {
+        const created = [];
+        const updated = [];
+        const errors = [];
+        for (let index = 0; index < records.length; index++) {
+            const record = records[index] ?? {};
+            const { id, ...data } = record;
+            const name = `${record.name ?? ''}`.trim() || `Registro ${index + 1}`;
+            const hasTypes = [record.typeId, record.typeName].some((value) => `${value ?? ''}`.trim()) ||
+                (Array.isArray(record.typeIds) && record.typeIds.length > 0) ||
+                (Array.isArray(record.typeNames) && record.typeNames.length > 0);
+            const missing = [];
+            if (!id && !`${data.name ?? ''}`.trim())
+                missing.push('name');
+            if (!id && [undefined, null, ''].includes(data.stock))
+                missing.push('stock');
+            if (!id && !hasTypes)
+                missing.push('typeIds/typeNames');
+            if (missing.length > 0) {
+                errors.push({
+                    index,
+                    name,
+                    message: `Faltan campos obligatorios: ${missing.join(', ')}`,
+                });
+                continue;
+            }
+            try {
+                const result = id ? await this.edit(id, data) : await this.create(data);
+                (id ? updated : created).push(result?.item ?? result);
+            }
+            catch (error) {
+                errors.push({ index, name, message: (0, bulk_1.bulkErrorMessage)(error) });
+            }
+        }
+        return {
+            status: 'success',
+            message: (0, bulk_1.bulkSummaryMessage)({
+                created: created.length,
+                updated: updated.length,
+                failed: errors.length,
+            }),
+            data: { created, updated, errors },
+        };
+    }
     async removeMany(ids) {
         const deleted = await this.prisma.$transaction(async (tx) => {
             await tx.itemOperation.deleteMany({ where: { itemId: { in: ids } } });
@@ -2837,7 +2869,7 @@ let InventoryService = class InventoryService {
         return {
             status: 'success',
             message: (0, bulk_1.bulkSummaryMessage)({ deleted, failed: ids.length - deleted }),
-            data: { deleted }
+            data: { deleted },
         };
     }
     async addCopies(id, dto) {
@@ -2845,8 +2877,12 @@ let InventoryService = class InventoryService {
             const item = await tx.item.findUnique({ where: { id } });
             if (!item)
                 throw new common_1.HttpException('Item no encontrado', common_1.HttpStatus.NOT_FOUND);
-            const requestedCodes = Array.isArray(dto.codes) ? dto.codes : [];
-            const quantity = dto.quantity !== undefined ? parseInt(dto.quantity) : requestedCodes.length;
+            const requestedCodes = Array.isArray(dto.codes)
+                ? dto.codes
+                : [];
+            const quantity = dto.quantity !== undefined
+                ? parseInt(dto.quantity)
+                : requestedCodes.length;
             if (!quantity || quantity <= 0) {
                 throw new common_1.BadRequestException('Debes indicar al menos un ejemplar');
             }
@@ -2854,14 +2890,18 @@ let InventoryService = class InventoryService {
                 location: dto.location,
                 observations: dto.observations,
                 codeFrom: dto.codeFrom,
-                codeTo: dto.codeTo
+                codeTo: dto.codeTo,
             });
             const summary = await (0, copies_1.recalcItemStock)(tx, id);
             const copies = await tx.itemCopy.findMany({
                 where: { itemId: id },
-                orderBy: { createdAt: 'asc' }
+                orderBy: { createdAt: 'asc' },
             });
-            return { status: 'success', message: 'Ejemplares agregados', data: { copies, summary } };
+            return {
+                status: 'success',
+                message: 'Ejemplares agregados',
+                data: { copies, summary },
+            };
         });
     }
     async findCopies(id) {
@@ -2870,7 +2910,7 @@ let InventoryService = class InventoryService {
             throw new common_1.HttpException('Item no encontrado', common_1.HttpStatus.NOT_FOUND);
         const copies = await this.prisma.itemCopy.findMany({
             where: { itemId: id },
-            orderBy: { createdAt: 'asc' }
+            orderBy: { createdAt: 'asc' },
         });
         return { status: 'success', data: copies };
     }
@@ -2899,7 +2939,11 @@ let InventoryService = class InventoryService {
                 throw error;
             }
             const summary = await (0, copies_1.recalcItemStock)(tx, copy.itemId);
-            return { status: 'success', message: 'Ejemplar actualizado', data: { copy: updated, summary } };
+            return {
+                status: 'success',
+                message: 'Ejemplar actualizado',
+                data: { copy: updated, summary },
+            };
         });
     }
     async removeCopy(copyId) {
@@ -2912,7 +2956,11 @@ let InventoryService = class InventoryService {
             }
             await tx.itemCopy.delete({ where: { id: copyId } });
             const summary = await (0, copies_1.recalcItemStock)(tx, copy.itemId);
-            return { status: 'success', message: 'Ejemplar eliminado', data: { summary } };
+            return {
+                status: 'success',
+                message: 'Ejemplar eliminado',
+                data: { summary },
+            };
         });
     }
 };
@@ -3185,7 +3233,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 var __param = (this && this.__param) || function (paramIndex, decorator) {
     return function (target, key) { decorator(target, key, paramIndex); }
 };
-var _a, _b, _c, _d;
+var _a, _b, _c, _d, _e;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.InventoryController = void 0;
 const common_1 = __webpack_require__(3);
@@ -3193,6 +3241,7 @@ const inventory_service_1 = __webpack_require__(48);
 const edit_item_dto_1 = __webpack_require__(53);
 const create_inventory_dto_1 = __webpack_require__(55);
 const bulk_ids_dto_1 = __webpack_require__(44);
+const bulk_inventory_dto_1 = __webpack_require__(56);
 const client_1 = __webpack_require__(7);
 const roles_guard_1 = __webpack_require__(30);
 const jwt_auth_guard_1 = __webpack_require__(25);
@@ -3203,6 +3252,9 @@ let InventoryController = class InventoryController {
     }
     create(createInventoryDto) {
         return this.inventoryService.create(createInventoryDto);
+    }
+    bulk(bulkInventoryDto) {
+        return this.inventoryService.bulkUpsert(bulkInventoryDto.records);
     }
     bulkDelete(bulkIdsDto) {
         return this.inventoryService.removeMany(bulkIdsDto.ids);
@@ -3243,12 +3295,21 @@ __decorate([
     __metadata("design:returntype", void 0)
 ], InventoryController.prototype, "create", null);
 __decorate([
+    (0, common_1.Post)('bulk'),
+    (0, roles_decorator_1.Roles)(client_1.Role.LIBRARIAN, client_1.Role.ADMIN),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [typeof (_c = typeof bulk_inventory_dto_1.BulkInventoryDto !== "undefined" && bulk_inventory_dto_1.BulkInventoryDto) === "function" ? _c : Object]),
+    __metadata("design:returntype", void 0)
+], InventoryController.prototype, "bulk", null);
+__decorate([
     (0, common_1.Post)('bulk-delete'),
     (0, roles_decorator_1.Roles)(client_1.Role.LIBRARIAN, client_1.Role.ADMIN),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
     __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [typeof (_c = typeof bulk_ids_dto_1.BulkIdsDto !== "undefined" && bulk_ids_dto_1.BulkIdsDto) === "function" ? _c : Object]),
+    __metadata("design:paramtypes", [typeof (_d = typeof bulk_ids_dto_1.BulkIdsDto !== "undefined" && bulk_ids_dto_1.BulkIdsDto) === "function" ? _d : Object]),
     __metadata("design:returntype", void 0)
 ], InventoryController.prototype, "bulkDelete", null);
 __decorate([
@@ -3314,7 +3375,7 @@ __decorate([
     __param(0, (0, common_1.Param)('id')),
     __param(1, (0, common_1.Body)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, typeof (_d = typeof edit_item_dto_1.EditItemInventory !== "undefined" && edit_item_dto_1.EditItemInventory) === "function" ? _d : Object]),
+    __metadata("design:paramtypes", [String, typeof (_e = typeof edit_item_dto_1.EditItemInventory !== "undefined" && edit_item_dto_1.EditItemInventory) === "function" ? _e : Object]),
     __metadata("design:returntype", void 0)
 ], InventoryController.prototype, "edit", null);
 __decorate([
@@ -3387,94 +3448,132 @@ __decorate([
 ], CreateInventoryDto.prototype, "name", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)({ message: 'El código debe ser cadena de texto' }),
+    __metadata("design:type", String)
+], CreateInventoryDto.prototype, "code", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)({ message: 'La descripción debe ser texto' }),
+    (0, class_validator_1.MaxLength)(200, {
+        message: 'La descripción debe tener un máximo de 200 caracteres',
+    }),
+    __metadata("design:type", String)
+], CreateInventoryDto.prototype, "description", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsArray)({ message: 'Los tipos deben ser un arreglo' }),
+    (0, class_validator_1.IsString)({
+        each: true,
+        message: 'Cada ID de tipo debe ser una cadena de texto',
+    }),
+    __metadata("design:type", Array)
+], CreateInventoryDto.prototype, "typeIds", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsArray)({ message: 'Los tipos deben ser un arreglo' }),
+    (0, class_validator_1.IsString)({
+        each: true,
+        message: 'Cada nombre de tipo debe ser una cadena de texto',
+    }),
+    __metadata("design:type", Array)
+], CreateInventoryDto.prototype, "typeNames", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)({ message: 'El ID del tipo debe ser una cadena de texto' }),
     __metadata("design:type", String)
 ], CreateInventoryDto.prototype, "typeId", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)({ message: 'El nombre del tipo debe ser texto' }),
-    (0, class_validator_1.MinLength)(2, { message: 'El nombre del tipo debe tener mínimo 2 caracteres' }),
+    (0, class_validator_1.MinLength)(2, {
+        message: 'El nombre del tipo debe tener mínimo 2 caracteres',
+    }),
     __metadata("design:type", String)
 ], CreateInventoryDto.prototype, "typeName", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsString)({ message: 'El código debe ser cadena de texto' }),
-    __metadata("design:type", String)
-], CreateInventoryDto.prototype, "code", void 0);
-__decorate([
-    (0, class_validator_1.IsString)({ message: 'La descripción debe ser texto' }),
-    (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.MaxLength)(200, { message: 'La descripción debe tener un máximo de 200 caracteres' }),
-    __metadata("design:type", String)
-], CreateInventoryDto.prototype, "description", void 0);
-__decorate([
-    (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsArray)({ message: 'Los autores deben ser un arreglo' }),
-    (0, class_validator_1.IsString)({ each: true, message: 'Cada ID de autor debe ser una cadena de texto' }),
+    (0, class_validator_1.IsArray)({ message: 'Los códigos de ejemplar deben ser un arreglo' }),
+    (0, class_validator_1.IsString)({
+        each: true,
+        message: 'Cada código de ejemplar debe ser una cadena de texto',
+    }),
     __metadata("design:type", Array)
-], CreateInventoryDto.prototype, "authorIds", void 0);
-__decorate([
-    (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsArray)({ message: 'Los autores deben ser un arreglo' }),
-    (0, class_validator_1.IsString)({ each: true, message: 'Cada nombre de autor debe ser una cadena de texto' }),
-    __metadata("design:type", Array)
-], CreateInventoryDto.prototype, "authorNames", void 0);
-__decorate([
-    (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsString)({ message: 'El nombre del autor debe ser una cadena de texto' }),
-    (0, class_validator_1.MinLength)(2, { message: 'El nombre del autor debe tener mínimo 2 caracteres' }),
-    __metadata("design:type", String)
-], CreateInventoryDto.prototype, "authorName", void 0);
-__decorate([
-    (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsString)({ message: 'El ID del autor debe ser una cadena de texto' }),
-    __metadata("design:type", String)
-], CreateInventoryDto.prototype, "authorId", void 0);
-__decorate([
-    (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsArray)({ message: 'Las categorías deben ser un arreglo' }),
-    (0, class_validator_1.IsString)({ each: true, message: 'Cada ID de categoría debe ser una cadena de texto' }),
-    __metadata("design:type", Array)
-], CreateInventoryDto.prototype, "categoryIds", void 0);
-__decorate([
-    (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsArray)({ message: 'Las categorías deben ser un arreglo' }),
-    (0, class_validator_1.IsString)({ each: true, message: 'Cada nombre de categoría debe ser una cadena de texto' }),
-    __metadata("design:type", Array)
-], CreateInventoryDto.prototype, "categoryNames", void 0);
-__decorate([
-    (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsString)({ message: 'El nombre de la categoría debe ser una cadena de texto' }),
-    (0, class_validator_1.MinLength)(2, { message: 'El nombre de la categoría debe tener mínimo 2 caracteres' }),
-    __metadata("design:type", String)
-], CreateInventoryDto.prototype, "categoryName", void 0);
-__decorate([
-    (0, class_validator_1.IsOptional)(),
-    (0, class_validator_1.IsString)({ message: 'El ID de la categoría debe ser una cadena de texto' }),
-    __metadata("design:type", String)
-], CreateInventoryDto.prototype, "categoryId", void 0);
+], CreateInventoryDto.prototype, "copyCodes", void 0);
 
 
 /***/ }),
 /* 56 */
-/***/ ((module) => {
+/***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
-module.exports = require("@nestjs/serve-static");
+
+var __decorate = (this && this.__decorate) || function (decorators, target, key, desc) {
+    var c = arguments.length, r = c < 3 ? target : desc === null ? desc = Object.getOwnPropertyDescriptor(target, key) : desc, d;
+    if (typeof Reflect === "object" && typeof Reflect.decorate === "function") r = Reflect.decorate(decorators, target, key, desc);
+    else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
+    return c > 3 && r && Object.defineProperty(target, key, r), r;
+};
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.BulkInventoryDto = exports.BulkInventoryRecordDto = void 0;
+const class_transformer_1 = __webpack_require__(45);
+const class_validator_1 = __webpack_require__(19);
+const update_inventory_dto_1 = __webpack_require__(57);
+class BulkInventoryRecordDto extends update_inventory_dto_1.UpdateInventory {
+}
+exports.BulkInventoryRecordDto = BulkInventoryRecordDto;
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)({ message: 'El ID del registro debe ser una cadena de texto' }),
+    __metadata("design:type", String)
+], BulkInventoryRecordDto.prototype, "id", void 0);
+class BulkInventoryDto {
+}
+exports.BulkInventoryDto = BulkInventoryDto;
+__decorate([
+    (0, class_validator_1.IsArray)({ message: 'Los registros deben ser un arreglo' }),
+    (0, class_validator_1.ArrayNotEmpty)({ message: 'Debes incluir al menos un registro' }),
+    (0, class_validator_1.ValidateNested)({ each: true }),
+    (0, class_transformer_1.Type)(() => BulkInventoryRecordDto),
+    __metadata("design:type", Array)
+], BulkInventoryDto.prototype, "records", void 0);
+
 
 /***/ }),
 /* 57 */
-/***/ ((module) => {
+/***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
-module.exports = require("path");
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.UpdateInventory = void 0;
+const swagger_1 = __webpack_require__(54);
+const create_inventory_dto_1 = __webpack_require__(55);
+class UpdateInventory extends (0, swagger_1.PartialType)(create_inventory_dto_1.CreateInventoryDto) {
+}
+exports.UpdateInventory = UpdateInventory;
+
 
 /***/ }),
 /* 58 */
 /***/ ((module) => {
 
-module.exports = require("@nestjs/platform-express");
+module.exports = require("@nestjs/serve-static");
 
 /***/ }),
 /* 59 */
+/***/ ((module) => {
+
+module.exports = require("path");
+
+/***/ }),
+/* 60 */
+/***/ ((module) => {
+
+module.exports = require("@nestjs/platform-express");
+
+/***/ }),
+/* 61 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -3487,8 +3586,8 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.PhysicalBooksModule = void 0;
 const common_1 = __webpack_require__(3);
-const physical_books_service_1 = __webpack_require__(60);
-const physical_books_controller_1 = __webpack_require__(61);
+const physical_books_service_1 = __webpack_require__(62);
+const physical_books_controller_1 = __webpack_require__(63);
 let PhysicalBooksModule = class PhysicalBooksModule {
 };
 exports.PhysicalBooksModule = PhysicalBooksModule;
@@ -3501,7 +3600,7 @@ exports.PhysicalBooksModule = PhysicalBooksModule = __decorate([
 
 
 /***/ }),
-/* 60 */
+/* 62 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -3969,7 +4068,7 @@ exports.PhysicalBooksService = PhysicalBooksService = __decorate([
 
 
 /***/ }),
-/* 61 */
+/* 63 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -3989,10 +4088,10 @@ var _a, _b, _c, _d, _e;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.PhysicalBooksController = void 0;
 const common_1 = __webpack_require__(3);
-const physical_books_service_1 = __webpack_require__(60);
-const create_physical_book_dto_1 = __webpack_require__(62);
-const update_physical_book_dto_1 = __webpack_require__(63);
-const bulk_physical_book_dto_1 = __webpack_require__(64);
+const physical_books_service_1 = __webpack_require__(62);
+const create_physical_book_dto_1 = __webpack_require__(64);
+const update_physical_book_dto_1 = __webpack_require__(65);
+const bulk_physical_book_dto_1 = __webpack_require__(66);
 const bulk_ids_dto_1 = __webpack_require__(44);
 const client_1 = __webpack_require__(7);
 const roles_guard_1 = __webpack_require__(30);
@@ -4146,7 +4245,7 @@ exports.PhysicalBooksController = PhysicalBooksController = __decorate([
 
 
 /***/ }),
-/* 62 */
+/* 64 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -4293,21 +4392,21 @@ __decorate([
 
 
 /***/ }),
-/* 63 */
+/* 65 */
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.UpdatePhysicalBookDto = void 0;
 const swagger_1 = __webpack_require__(54);
-const create_physical_book_dto_1 = __webpack_require__(62);
+const create_physical_book_dto_1 = __webpack_require__(64);
 class UpdatePhysicalBookDto extends (0, swagger_1.PartialType)(create_physical_book_dto_1.CreatePhysicalBookDto) {
 }
 exports.UpdatePhysicalBookDto = UpdatePhysicalBookDto;
 
 
 /***/ }),
-/* 64 */
+/* 66 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -4324,7 +4423,7 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.BulkPhysicalBookDto = exports.BulkPhysicalBookRecordDto = void 0;
 const class_transformer_1 = __webpack_require__(45);
 const class_validator_1 = __webpack_require__(19);
-const update_physical_book_dto_1 = __webpack_require__(63);
+const update_physical_book_dto_1 = __webpack_require__(65);
 class BulkPhysicalBookRecordDto extends update_physical_book_dto_1.UpdatePhysicalBookDto {
 }
 exports.BulkPhysicalBookRecordDto = BulkPhysicalBookRecordDto;
@@ -4346,7 +4445,7 @@ __decorate([
 
 
 /***/ }),
-/* 65 */
+/* 67 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -4359,8 +4458,8 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.CategoryModule = void 0;
 const common_1 = __webpack_require__(3);
-const category_service_1 = __webpack_require__(66);
-const category_controller_1 = __webpack_require__(67);
+const category_service_1 = __webpack_require__(68);
+const category_controller_1 = __webpack_require__(69);
 let CategoryModule = class CategoryModule {
 };
 exports.CategoryModule = CategoryModule;
@@ -4373,7 +4472,7 @@ exports.CategoryModule = CategoryModule = __decorate([
 
 
 /***/ }),
-/* 66 */
+/* 68 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -4441,7 +4540,7 @@ exports.CategoryService = CategoryService = __decorate([
 
 
 /***/ }),
-/* 67 */
+/* 69 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -4461,9 +4560,9 @@ var _a, _b, _c;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.CategoryController = void 0;
 const common_1 = __webpack_require__(3);
-const category_service_1 = __webpack_require__(66);
-const create_category_dto_1 = __webpack_require__(68);
-const update_category_dto_1 = __webpack_require__(69);
+const category_service_1 = __webpack_require__(68);
+const create_category_dto_1 = __webpack_require__(70);
+const update_category_dto_1 = __webpack_require__(71);
 let CategoryController = class CategoryController {
     constructor(categoryService) {
         this.categoryService = categoryService;
@@ -4528,7 +4627,7 @@ exports.CategoryController = CategoryController = __decorate([
 
 
 /***/ }),
-/* 68 */
+/* 70 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -4556,21 +4655,21 @@ __decorate([
 
 
 /***/ }),
-/* 69 */
+/* 71 */
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.UpdateCategoryDto = void 0;
 const swagger_1 = __webpack_require__(54);
-const create_category_dto_1 = __webpack_require__(68);
+const create_category_dto_1 = __webpack_require__(70);
 class UpdateCategoryDto extends (0, swagger_1.PartialType)(create_category_dto_1.CreateCategoryDto) {
 }
 exports.UpdateCategoryDto = UpdateCategoryDto;
 
 
 /***/ }),
-/* 70 */
+/* 72 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -4583,8 +4682,8 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.AuthorModule = void 0;
 const common_1 = __webpack_require__(3);
-const author_service_1 = __webpack_require__(71);
-const author_controller_1 = __webpack_require__(72);
+const author_service_1 = __webpack_require__(73);
+const author_controller_1 = __webpack_require__(74);
 let AuthorModule = class AuthorModule {
 };
 exports.AuthorModule = AuthorModule;
@@ -4597,7 +4696,7 @@ exports.AuthorModule = AuthorModule = __decorate([
 
 
 /***/ }),
-/* 71 */
+/* 73 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -4671,7 +4770,7 @@ exports.AuthorService = AuthorService = __decorate([
 
 
 /***/ }),
-/* 72 */
+/* 74 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -4691,9 +4790,9 @@ var _a, _b, _c;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.AuthorController = void 0;
 const common_1 = __webpack_require__(3);
-const author_service_1 = __webpack_require__(71);
-const create_author_dto_1 = __webpack_require__(73);
-const update_author_dto_1 = __webpack_require__(74);
+const author_service_1 = __webpack_require__(73);
+const create_author_dto_1 = __webpack_require__(75);
+const update_author_dto_1 = __webpack_require__(76);
 let AuthorController = class AuthorController {
     constructor(authorService) {
         this.authorService = authorService;
@@ -4758,7 +4857,7 @@ exports.AuthorController = AuthorController = __decorate([
 
 
 /***/ }),
-/* 73 */
+/* 75 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -4785,21 +4884,21 @@ __decorate([
 
 
 /***/ }),
-/* 74 */
+/* 76 */
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.UpdateAuthorDto = void 0;
 const swagger_1 = __webpack_require__(54);
-const create_author_dto_1 = __webpack_require__(73);
+const create_author_dto_1 = __webpack_require__(75);
 class UpdateAuthorDto extends (0, swagger_1.PartialType)(create_author_dto_1.CreateAuthorDto) {
 }
 exports.UpdateAuthorDto = UpdateAuthorDto;
 
 
 /***/ }),
-/* 75 */
+/* 77 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -4812,8 +4911,8 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.PnfModule = void 0;
 const common_1 = __webpack_require__(3);
-const pnf_controller_1 = __webpack_require__(76);
-const pnf_service_1 = __webpack_require__(79);
+const pnf_controller_1 = __webpack_require__(78);
+const pnf_service_1 = __webpack_require__(81);
 let PnfModule = class PnfModule {
 };
 exports.PnfModule = PnfModule;
@@ -4826,7 +4925,7 @@ exports.PnfModule = PnfModule = __decorate([
 
 
 /***/ }),
-/* 76 */
+/* 78 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -4846,9 +4945,9 @@ var _a, _b, _c;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.PnfController = void 0;
 const common_1 = __webpack_require__(3);
-const create_pnf_dto_1 = __webpack_require__(77);
-const update_pnf_dto_1 = __webpack_require__(78);
-const pnf_service_1 = __webpack_require__(79);
+const create_pnf_dto_1 = __webpack_require__(79);
+const update_pnf_dto_1 = __webpack_require__(80);
+const pnf_service_1 = __webpack_require__(81);
 let PnfController = class PnfController {
     constructor(pnfService) {
         this.pnfService = pnfService;
@@ -4913,7 +5012,7 @@ exports.PnfController = PnfController = __decorate([
 
 
 /***/ }),
-/* 77 */
+/* 79 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -4941,21 +5040,21 @@ __decorate([
 
 
 /***/ }),
-/* 78 */
+/* 80 */
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.UpdatePnfDto = void 0;
 const swagger_1 = __webpack_require__(54);
-const create_pnf_dto_1 = __webpack_require__(77);
+const create_pnf_dto_1 = __webpack_require__(79);
 class UpdatePnfDto extends (0, swagger_1.PartialType)(create_pnf_dto_1.CreatePnfDto) {
 }
 exports.UpdatePnfDto = UpdatePnfDto;
 
 
 /***/ }),
-/* 79 */
+/* 81 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -5032,7 +5131,7 @@ exports.PnfService = PnfService = __decorate([
 
 
 /***/ }),
-/* 80 */
+/* 82 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -5045,8 +5144,8 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.PhysicalBookOperationModule = void 0;
 const common_1 = __webpack_require__(3);
-const physical_book_operation_service_1 = __webpack_require__(81);
-const physical_book_operation_controller_1 = __webpack_require__(82);
+const physical_book_operation_service_1 = __webpack_require__(83);
+const physical_book_operation_controller_1 = __webpack_require__(84);
 let PhysicalBookOperationModule = class PhysicalBookOperationModule {
 };
 exports.PhysicalBookOperationModule = PhysicalBookOperationModule;
@@ -5059,7 +5158,7 @@ exports.PhysicalBookOperationModule = PhysicalBookOperationModule = __decorate([
 
 
 /***/ }),
-/* 81 */
+/* 83 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -5389,7 +5488,7 @@ exports.PhysicalBookOperationService = PhysicalBookOperationService = __decorate
 
 
 /***/ }),
-/* 82 */
+/* 84 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -5409,11 +5508,11 @@ var _a, _b, _c, _d, _e, _f;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.PhysicalBookOperationController = void 0;
 const common_1 = __webpack_require__(3);
-const physical_book_operation_service_1 = __webpack_require__(81);
-const update_physical_book_operation_dto_1 = __webpack_require__(83);
-const entrie_dto_1 = __webpack_require__(85);
-const drop_dto_1 = __webpack_require__(86);
-const loan_dto_1 = __webpack_require__(87);
+const physical_book_operation_service_1 = __webpack_require__(83);
+const update_physical_book_operation_dto_1 = __webpack_require__(85);
+const entrie_dto_1 = __webpack_require__(87);
+const drop_dto_1 = __webpack_require__(88);
+const loan_dto_1 = __webpack_require__(89);
 const bulk_ids_dto_1 = __webpack_require__(44);
 const roles_decorator_1 = __webpack_require__(31);
 const client_1 = __webpack_require__(7);
@@ -5555,21 +5654,21 @@ exports.PhysicalBookOperationController = PhysicalBookOperationController = __de
 
 
 /***/ }),
-/* 83 */
+/* 85 */
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.UpdatePhysicalBookOperationDto = void 0;
 const swagger_1 = __webpack_require__(54);
-const create_physical_book_operation_dto_1 = __webpack_require__(84);
+const create_physical_book_operation_dto_1 = __webpack_require__(86);
 class UpdatePhysicalBookOperationDto extends (0, swagger_1.PartialType)(create_physical_book_operation_dto_1.CreatePhysicalBookOperationDto) {
 }
 exports.UpdatePhysicalBookOperationDto = UpdatePhysicalBookOperationDto;
 
 
 /***/ }),
-/* 84 */
+/* 86 */
 /***/ ((__unused_webpack_module, exports) => {
 
 
@@ -5581,7 +5680,7 @@ exports.CreatePhysicalBookOperationDto = CreatePhysicalBookOperationDto;
 
 
 /***/ }),
-/* 85 */
+/* 87 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -5642,7 +5741,7 @@ __decorate([
 
 
 /***/ }),
-/* 86 */
+/* 88 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -5658,7 +5757,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.DropDto = void 0;
 const swagger_1 = __webpack_require__(54);
-const entrie_dto_1 = __webpack_require__(85);
+const entrie_dto_1 = __webpack_require__(87);
 const class_validator_1 = __webpack_require__(19);
 class DropDto extends (0, swagger_1.PartialType)(entrie_dto_1.EntrieDto) {
 }
@@ -5670,7 +5769,7 @@ __decorate([
 
 
 /***/ }),
-/* 87 */
+/* 89 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -5734,7 +5833,7 @@ __decorate([
 
 
 /***/ }),
-/* 88 */
+/* 90 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -5747,8 +5846,8 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.ItemTypeModule = void 0;
 const common_1 = __webpack_require__(3);
-const item_type_service_1 = __webpack_require__(89);
-const item_type_controller_1 = __webpack_require__(90);
+const item_type_service_1 = __webpack_require__(91);
+const item_type_controller_1 = __webpack_require__(92);
 let ItemTypeModule = class ItemTypeModule {
 };
 exports.ItemTypeModule = ItemTypeModule;
@@ -5761,7 +5860,7 @@ exports.ItemTypeModule = ItemTypeModule = __decorate([
 
 
 /***/ }),
-/* 89 */
+/* 91 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -5784,25 +5883,62 @@ let ItemTypeService = class ItemTypeService {
         this.prisma = prisma;
     }
     async create(createItemTypeDto) {
-        return { message: 'Tipo Creado', status: 'success', data: await this.prisma.itemType.create({ data: createItemTypeDto }) };
+        const name = createItemTypeDto.name.trim();
+        const existing = await this.prisma.itemType.findFirst({
+            where: { name: { equals: name, mode: 'insensitive' } },
+        });
+        if (existing) {
+            return {
+                message: 'El tipo ya existe',
+                status: 'success',
+                data: existing,
+            };
+        }
+        return {
+            message: 'Tipo Creado',
+            status: 'success',
+            data: await this.prisma.itemType.create({ data: { name } }),
+        };
     }
     async findAll(query) {
         const where = {};
+        const take = parseInt(query.limit) || 10;
         if (query.search) {
-            where.OR = [
-                { name: { contains: query.search, mode: 'insensitive' } }
-            ];
+            where.OR = [{ name: { contains: query.search, mode: 'insensitive' } }];
         }
-        return await this.prisma.itemType.findMany({ where, take: 10 });
+        return this.prisma.itemType.findMany({
+            where,
+            take,
+            orderBy: { name: 'asc' },
+        });
     }
-    findOne(id) {
-        return `This action returns a #${id} itemType`;
+    async findOne(id) {
+        const itemType = await this.prisma.itemType.findUnique({ where: { id } });
+        if (!itemType) {
+            throw new common_1.HttpException('Tipo no encontrado', common_1.HttpStatus.NOT_FOUND);
+        }
+        return { status: 'success', data: itemType };
     }
     async update(id, updateItemTypeDto) {
-        return { message: 'Tipo Actualizado', status: 'success', data: await this.prisma.itemType.update({ where: { id }, data: updateItemTypeDto }) };
+        const data = updateItemTypeDto.name
+            ? { name: updateItemTypeDto.name.trim() }
+            : {};
+        return {
+            message: 'Tipo Actualizado',
+            status: 'success',
+            data: await this.prisma.itemType.update({ where: { id }, data }),
+        };
     }
     async remove(id) {
-        return { message: 'Tipo Eliminado', status: 'success', data: await this.prisma.itemType.delete({ where: { id } }) };
+        const itemType = await this.prisma.itemType.findUnique({ where: { id } });
+        if (!itemType) {
+            throw new common_1.HttpException('Tipo no encontrado', common_1.HttpStatus.NOT_FOUND);
+        }
+        return {
+            message: 'Tipo Eliminado',
+            status: 'success',
+            data: await this.prisma.itemType.delete({ where: { id } }),
+        };
     }
 };
 exports.ItemTypeService = ItemTypeService;
@@ -5813,7 +5949,7 @@ exports.ItemTypeService = ItemTypeService = __decorate([
 
 
 /***/ }),
-/* 90 */
+/* 92 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -5833,9 +5969,9 @@ var _a, _b, _c;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.ItemTypeController = void 0;
 const common_1 = __webpack_require__(3);
-const item_type_service_1 = __webpack_require__(89);
-const create_item_type_dto_1 = __webpack_require__(91);
-const update_item_type_dto_1 = __webpack_require__(92);
+const item_type_service_1 = __webpack_require__(91);
+const create_item_type_dto_1 = __webpack_require__(93);
+const update_item_type_dto_1 = __webpack_require__(94);
 let ItemTypeController = class ItemTypeController {
     constructor(itemTypeService) {
         this.itemTypeService = itemTypeService;
@@ -5900,7 +6036,7 @@ exports.ItemTypeController = ItemTypeController = __decorate([
 
 
 /***/ }),
-/* 91 */
+/* 93 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -5927,21 +6063,21 @@ __decorate([
 
 
 /***/ }),
-/* 92 */
+/* 94 */
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.UpdateItemTypeDto = void 0;
 const swagger_1 = __webpack_require__(54);
-const create_item_type_dto_1 = __webpack_require__(91);
+const create_item_type_dto_1 = __webpack_require__(93);
 class UpdateItemTypeDto extends (0, swagger_1.PartialType)(create_item_type_dto_1.CreateItemTypeDto) {
 }
 exports.UpdateItemTypeDto = UpdateItemTypeDto;
 
 
 /***/ }),
-/* 93 */
+/* 95 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -5954,8 +6090,8 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.InventoryOperationModule = void 0;
 const common_1 = __webpack_require__(3);
-const inventory_operation_service_1 = __webpack_require__(94);
-const inventory_operation_controller_1 = __webpack_require__(95);
+const inventory_operation_service_1 = __webpack_require__(96);
+const inventory_operation_controller_1 = __webpack_require__(97);
 let InventoryOperationModule = class InventoryOperationModule {
 };
 exports.InventoryOperationModule = InventoryOperationModule;
@@ -5968,7 +6104,7 @@ exports.InventoryOperationModule = InventoryOperationModule = __decorate([
 
 
 /***/ }),
-/* 94 */
+/* 96 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -5998,12 +6134,14 @@ let InventoryOperationService = class InventoryOperationService {
     }
     async addDrops(entriesDto) {
         return this.prisma.$transaction(async (tx) => {
-            const existingItem = await tx.item.findUnique({ where: { id: entriesDto.itemId } });
+            const existingItem = await tx.item.findUnique({
+                where: { id: entriesDto.itemId },
+            });
             if (!existingItem)
                 throw new common_1.HttpException('Item no encontrado', common_1.HttpStatus.NOT_FOUND);
             const copies = await tx.itemCopy.findMany({
                 where: { itemId: entriesDto.itemId },
-                orderBy: { createdAt: 'asc' }
+                orderBy: { createdAt: 'asc' },
             });
             if (copies.length > 0) {
                 const removable = copies.filter((c) => c.status !== client_1.CopyStatus.PRESTADO);
@@ -6012,10 +6150,13 @@ let InventoryOperationService = class InventoryOperationService {
                 }
                 const ordered = [
                     ...removable.filter((c) => c.status === client_1.CopyStatus.DISPONIBLE),
-                    ...removable.filter((c) => c.status !== client_1.CopyStatus.DISPONIBLE)
+                    ...removable.filter((c) => c.status !== client_1.CopyStatus.DISPONIBLE),
                 ];
                 for (let i = 0; i < entriesDto.quantity; i += 1) {
-                    await tx.itemCopy.update({ where: { id: ordered[i].id }, data: { status: client_1.CopyStatus.BAJA } });
+                    await tx.itemCopy.update({
+                        where: { id: ordered[i].id },
+                        data: { status: client_1.CopyStatus.BAJA },
+                    });
                 }
                 await (0, copies_1.recalcItemStock)(tx, entriesDto.itemId);
             }
@@ -6025,10 +6166,11 @@ let InventoryOperationService = class InventoryOperationService {
                 if (newValue < 0)
                     throw new common_1.BadRequestException('Hay prestamos pendientes, las bajas no pueden tener un valor superior a la cantidad de stock disponible');
                 await tx.item.update({
-                    where: { id: entriesDto.itemId }, data: {
+                    where: { id: entriesDto.itemId },
+                    data: {
                         availableStock: { decrement: entriesDto.quantity },
-                        totalStock: { decrement: entriesDto.quantity }
-                    }
+                        totalStock: { decrement: entriesDto.quantity },
+                    },
                 });
             }
             await tx.itemOperation.create({
@@ -6037,15 +6179,17 @@ let InventoryOperationService = class InventoryOperationService {
                     quantity: entriesDto.quantity,
                     type: 'BAJA',
                     personNames: entriesDto.personNames,
-                    personSurNames: entriesDto.personSurNames
-                }
+                    personSurNames: entriesDto.personSurNames,
+                },
             });
             return { status: 'success', message: 'Bajas añadidas' };
         });
     }
     async addEntries(entriesDto) {
         return this.prisma.$transaction(async (tx) => {
-            const existingItem = await tx.item.findUnique({ where: { id: entriesDto.itemId } });
+            const existingItem = await tx.item.findUnique({
+                where: { id: entriesDto.itemId },
+            });
             if (!existingItem)
                 throw new common_1.HttpException('Item no encontrado', common_1.HttpStatus.NOT_FOUND);
             await (0, copies_1.createItemCopies)(tx, existingItem, entriesDto.quantity, Array.isArray(entriesDto.codes) ? entriesDto.codes : []);
@@ -6056,17 +6200,21 @@ let InventoryOperationService = class InventoryOperationService {
                     quantity: entriesDto.quantity,
                     type: 'ENTRADA',
                     personNames: entriesDto.personNames,
-                    personSurNames: entriesDto.personSurNames
-                }
+                    personSurNames: entriesDto.personSurNames,
+                },
             });
             return { status: 'success', message: 'Entradas añadidas' };
         });
     }
     async loan(itemLoan) {
         return this.prisma.$transaction(async (tx) => {
-            const copyIds = Array.isArray(itemLoan.copyIds) ? itemLoan.copyIds : [];
+            const copyIds = Array.isArray(itemLoan.copyIds)
+                ? itemLoan.copyIds
+                : [];
             if (copyIds.length > 0) {
-                const copies = await tx.itemCopy.findMany({ where: { id: { in: copyIds } } });
+                const copies = await tx.itemCopy.findMany({
+                    where: { id: { in: copyIds } },
+                });
                 if (copies.length !== copyIds.length) {
                     throw new common_1.HttpException('Uno o más ejemplares no existen', common_1.HttpStatus.NOT_FOUND);
                 }
@@ -6085,19 +6233,27 @@ let InventoryOperationService = class InventoryOperationService {
                             personId: itemLoan.personId,
                             personNames: itemLoan.personNames,
                             personSurNames: itemLoan.personSurNames,
-                            type: 'PRESTAMO'
-                        }
+                            type: 'PRESTAMO',
+                        },
                     });
-                    await tx.itemCopy.update({ where: { id: copy.id }, data: { status: client_1.CopyStatus.PRESTADO } });
+                    await tx.itemCopy.update({
+                        where: { id: copy.id },
+                        data: { status: client_1.CopyStatus.PRESTADO },
+                    });
                     loans.push(loan);
                 }
                 await (0, copies_1.recalcItemStock)(tx, itemId);
-                return { status: 'success', message: 'Prestamo Registrado', loan: loans[0], loans };
+                return {
+                    status: 'success',
+                    message: 'Prestamo Registrado',
+                    loan: loans[0],
+                    loans,
+                };
             }
             const quantity = itemLoan.quantity ?? 1;
             const available = await tx.itemCopy.findMany({
                 where: { itemId: itemLoan.itemId, status: client_1.CopyStatus.DISPONIBLE },
-                orderBy: { createdAt: 'asc' }
+                orderBy: { createdAt: 'asc' },
             });
             if (available.length > 0) {
                 if (available.length < quantity)
@@ -6113,16 +6269,26 @@ let InventoryOperationService = class InventoryOperationService {
                             personId: itemLoan.personId,
                             personNames: itemLoan.personNames,
                             personSurNames: itemLoan.personSurNames,
-                            type: 'PRESTAMO'
-                        }
+                            type: 'PRESTAMO',
+                        },
                     });
-                    await tx.itemCopy.update({ where: { id: copy.id }, data: { status: client_1.CopyStatus.PRESTADO } });
+                    await tx.itemCopy.update({
+                        where: { id: copy.id },
+                        data: { status: client_1.CopyStatus.PRESTADO },
+                    });
                     loans.push(loan);
                 }
                 await (0, copies_1.recalcItemStock)(tx, itemLoan.itemId);
-                return { status: 'success', message: 'Prestamo Registrado', loan: loans[0], loans };
+                return {
+                    status: 'success',
+                    message: 'Prestamo Registrado',
+                    loan: loans[0],
+                    loans,
+                };
             }
-            const existingItem = await tx.item.findUnique({ where: { id: itemLoan.itemId } });
+            const existingItem = await tx.item.findUnique({
+                where: { id: itemLoan.itemId },
+            });
             if (!existingItem)
                 throw new common_1.HttpException('Item no encontrado', common_1.HttpStatus.NOT_FOUND);
             if (existingItem.availableStock - quantity < 0)
@@ -6134,13 +6300,14 @@ let InventoryOperationService = class InventoryOperationService {
                     itemId: itemLoan.itemId,
                     personId: itemLoan.personId,
                     personNames: itemLoan.personNames,
-                    personSurNames: itemLoan.personSurNames
-                }
+                    personSurNames: itemLoan.personSurNames,
+                },
             });
             await tx.item.update({
-                where: { id: itemLoan.itemId }, data: {
-                    availableStock: { decrement: quantity }
-                }
+                where: { id: itemLoan.itemId },
+                data: {
+                    availableStock: { decrement: quantity },
+                },
             });
             return { status: 'success', message: 'Prestamo Registrado', loan };
         });
@@ -6158,21 +6325,26 @@ let InventoryOperationService = class InventoryOperationService {
                     copyId: existingLoan.copyId,
                     personId: existingLoan.personId,
                     personNames: existingLoan.personNames,
-                    personSurNames: existingLoan.personSurNames
-                }
+                    personSurNames: existingLoan.personSurNames,
+                },
             });
             await tx.itemOperation.update({
-                where: { id }, data: { wasSettled: true }
+                where: { id },
+                data: { wasSettled: true },
             });
             if (existingLoan.copyId) {
-                await tx.itemCopy.update({ where: { id: existingLoan.copyId }, data: { status: client_1.CopyStatus.DISPONIBLE } });
+                await tx.itemCopy.update({
+                    where: { id: existingLoan.copyId },
+                    data: { status: client_1.CopyStatus.DISPONIBLE },
+                });
                 await (0, copies_1.recalcItemStock)(tx, existingLoan.itemId);
             }
             else {
                 await tx.item.update({
-                    where: { id: existingLoan.itemId }, data: {
-                        availableStock: { increment: existingLoan.quantity }
-                    }
+                    where: { id: existingLoan.itemId },
+                    data: {
+                        availableStock: { increment: existingLoan.quantity },
+                    },
                 });
             }
             return { status: 'success', message: 'Item Devuelto' };
@@ -6185,20 +6357,22 @@ let InventoryOperationService = class InventoryOperationService {
         const skip = (page - 1) * limit;
         if (query.search) {
             where.OR = [
-                { item: { name: { contains: query.search, mode: 'insensitive' } } }
+                { item: { name: { contains: query.search, mode: 'insensitive' } } },
             ];
         }
         const data = await this.prisma.itemOperation.findMany({
             where: { ...where, type: 'PRESTAMO', wasSettled: false },
             include: {
-                item: true,
-                copy: { select: { code: true } }
+                item: { include: { types: true } },
+                copy: { select: { code: true } },
             },
             orderBy: { createdAt: 'desc' },
             skip,
-            take: limit
+            take: limit,
         });
-        const totalPages = Math.ceil(await this.prisma.itemOperation.count({ where: { ...where, type: 'PRESTAMO', wasSettled: false } }) / limit);
+        const totalPages = Math.ceil((await this.prisma.itemOperation.count({
+            where: { ...where, type: 'PRESTAMO', wasSettled: false },
+        })) / limit);
         return { data, totalPages };
     }
     async findAll(query) {
@@ -6208,17 +6382,21 @@ let InventoryOperationService = class InventoryOperationService {
         const skip = (page - 1) * take;
         if (query.search) {
             where.AND = [
-                { item: { name: { contains: query.search, mode: 'insensitive' } } }
+                { item: { name: { contains: query.search, mode: 'insensitive' } } },
             ];
         }
         const totalPages = await this.prisma.itemOperation.count({
-            where
+            where,
         });
         const data = await this.prisma.itemOperation.findMany({
-            where, take, skip, orderBy: { createdAt: 'desc' }, include: {
-                item: true,
-                copy: { select: { code: true } }
-            }
+            where,
+            take,
+            skip,
+            orderBy: { createdAt: 'desc' },
+            include: {
+                item: { include: { types: true } },
+                copy: { select: { code: true } },
+            },
         });
         return { data, totalPages };
     }
@@ -6229,10 +6407,12 @@ let InventoryOperationService = class InventoryOperationService {
         return `This action updates a #${id} inventoryOperation`;
     }
     isDeletable(operation) {
-        return operation.type !== client_1.OperationType.PRESTAMO || operation.wasSettled === true;
+        return (operation.type !== client_1.OperationType.PRESTAMO || operation.wasSettled === true);
     }
     async remove(id) {
-        const operation = await this.prisma.itemOperation.findUnique({ where: { id } });
+        const operation = await this.prisma.itemOperation.findUnique({
+            where: { id },
+        });
         if (!operation)
             throw new common_1.HttpException('Operación no encontrada', common_1.HttpStatus.NOT_FOUND);
         if (!this.isDeletable(operation)) {
@@ -6242,17 +6422,23 @@ let InventoryOperationService = class InventoryOperationService {
         return { status: 'success', message: 'Operación eliminada' };
     }
     async removeMany(ids) {
-        const operations = await this.prisma.itemOperation.findMany({ where: { id: { in: ids } } });
-        const allowedIds = operations.filter((operation) => this.isDeletable(operation)).map((operation) => operation.id);
+        const operations = await this.prisma.itemOperation.findMany({
+            where: { id: { in: ids } },
+        });
+        const allowedIds = operations
+            .filter((operation) => this.isDeletable(operation))
+            .map((operation) => operation.id);
         const refused = operations.length - allowedIds.length;
         const deleted = allowedIds.length === 0
             ? 0
-            : (await this.prisma.itemOperation.deleteMany({ where: { id: { in: allowedIds } } })).count;
+            : (await this.prisma.itemOperation.deleteMany({
+                where: { id: { in: allowedIds } },
+            })).count;
         const notFound = ids.length - operations.length;
         return {
             status: 'success',
             message: `${(0, bulk_1.bulkSummaryMessage)({ deleted, failed: notFound })}${refused > 0 ? `. ${refused} préstamo(s) sin devolver se mantuvieron` : ''}`,
-            data: { deleted, refused }
+            data: { deleted, refused },
         };
     }
 };
@@ -6264,7 +6450,7 @@ exports.InventoryOperationService = InventoryOperationService = __decorate([
 
 
 /***/ }),
-/* 95 */
+/* 97 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -6284,13 +6470,13 @@ var _a, _b, _c, _d, _e, _f, _g;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.InventoryOperationController = void 0;
 const common_1 = __webpack_require__(3);
-const inventory_operation_service_1 = __webpack_require__(94);
-const create_inventory_operation_dto_1 = __webpack_require__(96);
-const update_inventory_operation_dto_1 = __webpack_require__(97);
-const entrie_dto_1 = __webpack_require__(98);
-const drop_dto_1 = __webpack_require__(99);
+const inventory_operation_service_1 = __webpack_require__(96);
+const create_inventory_operation_dto_1 = __webpack_require__(98);
+const update_inventory_operation_dto_1 = __webpack_require__(99);
+const entrie_dto_1 = __webpack_require__(100);
+const drop_dto_1 = __webpack_require__(101);
 const bulk_ids_dto_1 = __webpack_require__(44);
-const loan_dto_1 = __webpack_require__(100);
+const loan_dto_1 = __webpack_require__(102);
 const client_1 = __webpack_require__(7);
 const jwt_auth_guard_1 = __webpack_require__(25);
 const roles_decorator_1 = __webpack_require__(31);
@@ -6441,7 +6627,7 @@ exports.InventoryOperationController = InventoryOperationController = __decorate
 
 
 /***/ }),
-/* 96 */
+/* 98 */
 /***/ ((__unused_webpack_module, exports) => {
 
 
@@ -6453,21 +6639,21 @@ exports.CreateInventoryOperationDto = CreateInventoryOperationDto;
 
 
 /***/ }),
-/* 97 */
+/* 99 */
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.UpdateInventoryOperationDto = void 0;
 const swagger_1 = __webpack_require__(54);
-const create_inventory_operation_dto_1 = __webpack_require__(96);
+const create_inventory_operation_dto_1 = __webpack_require__(98);
 class UpdateInventoryOperationDto extends (0, swagger_1.PartialType)(create_inventory_operation_dto_1.CreateInventoryOperationDto) {
 }
 exports.UpdateInventoryOperationDto = UpdateInventoryOperationDto;
 
 
 /***/ }),
-/* 98 */
+/* 100 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -6518,7 +6704,7 @@ __decorate([
 
 
 /***/ }),
-/* 99 */
+/* 101 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -6534,7 +6720,7 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.DropDto = void 0;
 const swagger_1 = __webpack_require__(54);
-const entrie_dto_1 = __webpack_require__(98);
+const entrie_dto_1 = __webpack_require__(100);
 const class_validator_1 = __webpack_require__(19);
 class DropDto extends (0, swagger_1.PartialType)(entrie_dto_1.EntrieDto) {
 }
@@ -6546,7 +6732,7 @@ __decorate([
 
 
 /***/ }),
-/* 100 */
+/* 102 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -6610,7 +6796,7 @@ __decorate([
 
 
 /***/ }),
-/* 101 */
+/* 103 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -6623,9 +6809,9 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.LogsModule = void 0;
 const common_1 = __webpack_require__(3);
-const logs_service_1 = __webpack_require__(102);
-const logs_controller_1 = __webpack_require__(103);
-const prisma_module_1 = __webpack_require__(106);
+const logs_service_1 = __webpack_require__(104);
+const logs_controller_1 = __webpack_require__(105);
+const prisma_module_1 = __webpack_require__(108);
 let LogsModule = class LogsModule {
 };
 exports.LogsModule = LogsModule;
@@ -6639,7 +6825,7 @@ exports.LogsModule = LogsModule = __decorate([
 
 
 /***/ }),
-/* 102 */
+/* 104 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -6694,7 +6880,7 @@ exports.LogsService = LogsService = __decorate([
 
 
 /***/ }),
-/* 103 */
+/* 105 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -6714,9 +6900,9 @@ var _a, _b, _c;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.LogsController = void 0;
 const common_1 = __webpack_require__(3);
-const logs_service_1 = __webpack_require__(102);
-const create_log_dto_1 = __webpack_require__(104);
-const update_log_dto_1 = __webpack_require__(105);
+const logs_service_1 = __webpack_require__(104);
+const create_log_dto_1 = __webpack_require__(106);
+const update_log_dto_1 = __webpack_require__(107);
 let LogsController = class LogsController {
     constructor(logsService) {
         this.logsService = logsService;
@@ -6781,7 +6967,7 @@ exports.LogsController = LogsController = __decorate([
 
 
 /***/ }),
-/* 104 */
+/* 106 */
 /***/ ((__unused_webpack_module, exports) => {
 
 
@@ -6793,27 +6979,27 @@ exports.CreateLogDto = CreateLogDto;
 
 
 /***/ }),
-/* 105 */
+/* 107 */
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.UpdateLogDto = void 0;
 const swagger_1 = __webpack_require__(54);
-const create_log_dto_1 = __webpack_require__(104);
+const create_log_dto_1 = __webpack_require__(106);
 class UpdateLogDto extends (0, swagger_1.PartialType)(create_log_dto_1.CreateLogDto) {
 }
 exports.UpdateLogDto = UpdateLogDto;
 
 
 /***/ }),
-/* 106 */
+/* 108 */
 /***/ ((module) => {
 
 module.exports = require("prisma/prisma.module");
 
 /***/ }),
-/* 107 */
+/* 109 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -6826,8 +7012,8 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.BackupModule = void 0;
 const common_1 = __webpack_require__(3);
-const backup_service_1 = __webpack_require__(108);
-const backup_controller_1 = __webpack_require__(110);
+const backup_service_1 = __webpack_require__(110);
+const backup_controller_1 = __webpack_require__(112);
 let BackupModule = class BackupModule {
 };
 exports.BackupModule = BackupModule;
@@ -6840,7 +7026,7 @@ exports.BackupModule = BackupModule = __decorate([
 
 
 /***/ }),
-/* 108 */
+/* 110 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -6891,7 +7077,7 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.BackupService = void 0;
 const common_1 = __webpack_require__(3);
 const prisma_service_1 = __webpack_require__(6);
-const zlib = __importStar(__webpack_require__(109));
+const zlib = __importStar(__webpack_require__(111));
 let BackupService = class BackupService {
     constructor(prisma) {
         this.prisma = prisma;
@@ -6908,15 +7094,18 @@ let BackupService = class BackupService {
             ItemOperation: await this.prisma.itemOperation.findMany(),
             ItemType: await this.prisma.itemType.findMany(),
             Operation: await this.prisma.operation.findMany(),
-            PhysicalBook: await this.prisma.physicalBook.findMany({ include: { pnfs: true } }),
+            PhysicalBook: await this.prisma.physicalBook.findMany({
+                include: { pnfs: true },
+            }),
             BookCopy: await this.prisma.bookCopy.findMany(),
             ItemCopy: await this.prisma.itemCopy.findMany(),
             BookPnf: await this.prisma.bookPnf.findMany(),
             Pnf: await this.prisma.pnf.findMany(),
             _PhysicalBookToPnf: await this.prisma.$queryRawUnsafe(`SELECT * FROM "_PhysicalBookToPnf"`),
-            _PhysicalBookToAuthor: await this.prisma.$queryRawUnsafe(`SELECT * FROM "_PhysicalBookToAuthor"`),
-            _BookToAuthor: await this.prisma.$queryRawUnsafe(`SELECT * FROM "_BookToAuthor"`),
-            _ItemToAuthor: await this.prisma.$queryRawUnsafe(`SELECT * FROM "_ItemToAuthor"`),
+            _AuthorToPhysicalBook: await this.prisma.$queryRawUnsafe(`SELECT * FROM "_AuthorToPhysicalBook"`),
+            _CategoryToPhysicalBook: await this.prisma.$queryRawUnsafe(`SELECT * FROM "_CategoryToPhysicalBook"`),
+            _AuthorToBook: await this.prisma.$queryRawUnsafe(`SELECT * FROM "_AuthorToBook"`),
+            _ItemToItemType: await this.prisma.$queryRawUnsafe(`SELECT * FROM "_ItemToItemType"`),
             SavedBook: await this.prisma.savedBook.findMany(),
             User: await this.prisma.user.findMany(),
         };
@@ -6933,13 +7122,13 @@ exports.BackupService = BackupService = __decorate([
 
 
 /***/ }),
-/* 109 */
+/* 111 */
 /***/ ((module) => {
 
 module.exports = require("zlib");
 
 /***/ }),
-/* 110 */
+/* 112 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -6960,7 +7149,7 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.BackupController = void 0;
 const common_1 = __webpack_require__(3);
 const express_1 = __webpack_require__(24);
-const backup_service_1 = __webpack_require__(108);
+const backup_service_1 = __webpack_require__(110);
 let BackupController = class BackupController {
     constructor(backupService) {
         this.backupService = backupService;
@@ -6991,7 +7180,7 @@ exports.BackupController = BackupController = __decorate([
 
 
 /***/ }),
-/* 111 */
+/* 113 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -7004,8 +7193,8 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.SyncModule = void 0;
 const common_1 = __webpack_require__(3);
-const sync_service_1 = __webpack_require__(112);
-const sync_controller_1 = __webpack_require__(113);
+const sync_service_1 = __webpack_require__(114);
+const sync_controller_1 = __webpack_require__(115);
 let SyncModule = class SyncModule {
 };
 exports.SyncModule = SyncModule;
@@ -7018,7 +7207,7 @@ exports.SyncModule = SyncModule = __decorate([
 
 
 /***/ }),
-/* 112 */
+/* 114 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -7070,7 +7259,6 @@ const SCALARS = {
         'description',
         'totalStock',
         'availableStock',
-        'typeId',
         'status',
     ],
     itemCopy: ['code', 'status', 'location', 'observations', 'itemId'],
@@ -7117,7 +7305,9 @@ let SyncService = SyncService_1 = class SyncService {
         throw lastError;
     }
     isNewer(incoming, existing) {
-        if (!incoming || incoming.updatedAt === undefined || incoming.updatedAt === null) {
+        if (!incoming ||
+            incoming.updatedAt === undefined ||
+            incoming.updatedAt === null) {
             return false;
         }
         const a = new Date(incoming.updatedAt).getTime();
@@ -7149,7 +7339,10 @@ let SyncService = SyncService_1 = class SyncService {
                 counters.created += 1;
             }
             else if (this.isNewer(row, existing)) {
-                await tx[model].update({ where: { id: row.id }, data: this.pick(model, row, false) });
+                await tx[model].update({
+                    where: { id: row.id },
+                    data: this.pick(model, row, false),
+                });
                 counters.updated += 1;
             }
             else {
@@ -7176,7 +7369,7 @@ let SyncService = SyncService_1 = class SyncService {
             this.prisma.bookCopy.findMany(),
             this.prisma.bookOperation.findMany(),
             this.prisma.item.findMany({
-                include: { authors: { select: { id: true } }, categories: { select: { id: true } } },
+                include: { types: { select: { id: true } } },
             }),
             this.prisma.itemCopy.findMany(),
             this.prisma.itemOperation.findMany(),
@@ -7200,10 +7393,8 @@ let SyncService = SyncService_1 = class SyncService {
                 bookOperations,
                 items: items.map((i) => ({
                     ...i,
-                    authorIds: i.authors.map((a) => a.id),
-                    categoryIds: i.categories.map((c) => c.id),
-                    authors: undefined,
-                    categories: undefined,
+                    typeIds: i.types.map((t) => t.id),
+                    types: undefined,
                 })),
                 itemCopies,
                 itemOperations,
@@ -7227,7 +7418,9 @@ let SyncService = SyncService_1 = class SyncService {
             for (const row of data.physicalBooks ?? []) {
                 if (!row || typeof row.id !== 'string')
                     continue;
-                const existing = await tx.physicalBook.findUnique({ where: { id: row.id } });
+                const existing = await tx.physicalBook.findUnique({
+                    where: { id: row.id },
+                });
                 const base = this.pick('physicalBook', row);
                 const incomingPnfIds = Array.isArray(row.pnfIds)
                     ? row.pnfIds.filter((id) => typeof id === 'string')
@@ -7238,17 +7431,24 @@ let SyncService = SyncService_1 = class SyncService {
                     if (incomingPnfIds.length > 0) {
                         await tx.physicalBook.update({
                             where: { id: row.id },
-                            data: { pnfs: { set: incomingPnfIds.map((id) => ({ id })) } },
+                            data: {
+                                pnfs: { set: incomingPnfIds.map((id) => ({ id })) },
+                            },
                         });
                     }
                 }
                 else if (this.isNewer(row, existing)) {
-                    await tx.physicalBook.update({ where: { id: row.id }, data: this.pick('physicalBook', row, false) });
+                    await tx.physicalBook.update({
+                        where: { id: row.id },
+                        data: this.pick('physicalBook', row, false),
+                    });
                     counters.updated += 1;
                     if (incomingPnfIds.length > 0) {
                         await tx.physicalBook.update({
                             where: { id: row.id },
-                            data: { pnfs: { set: incomingPnfIds.map((id) => ({ id })) } },
+                            data: {
+                                pnfs: { set: incomingPnfIds.map((id) => ({ id })) },
+                            },
                         });
                     }
                 }
@@ -7284,7 +7484,14 @@ let SyncService = SyncService_1 = class SyncService {
             for (const row of data.items ?? []) {
                 if (!row || typeof row.id !== 'string')
                     continue;
-                if (row.typeId && !itemTypeIds.has(row.typeId)) {
+                const typeIdsProvided = Array.isArray(row.typeIds) || typeof row.typeId === 'string';
+                const incomingTypeIds = Array.isArray(row.typeIds)
+                    ? row.typeIds
+                    : typeof row.typeId === 'string'
+                        ? [row.typeId]
+                        : [];
+                const validTypeIds = incomingTypeIds.filter((id) => typeof id === 'string' && itemTypeIds.has(id));
+                if (typeIdsProvided && validTypeIds.length === 0) {
                     counters.skipped += 1;
                     continue;
                 }
@@ -7294,33 +7501,22 @@ let SyncService = SyncService_1 = class SyncService {
                     counters.created += 1;
                 }
                 else if (this.isNewer(row, existing)) {
-                    await tx.item.update({ where: { id: row.id }, data: this.pick('item', row, false) });
+                    await tx.item.update({
+                        where: { id: row.id },
+                        data: this.pick('item', row, false),
+                    });
                     counters.updated += 1;
                 }
                 else {
                     counters.skipped += 1;
                     continue;
                 }
-                if (Array.isArray(row.authorIds)) {
+                if (typeIdsProvided) {
                     await tx.item.update({
                         where: { id: row.id },
                         data: {
-                            authors: {
-                                set: row.authorIds
-                                    .filter((id) => authorIds.has(id))
-                                    .map((id) => ({ id })),
-                            },
-                        },
-                    });
-                }
-                if (Array.isArray(row.categoryIds)) {
-                    await tx.item.update({
-                        where: { id: row.id },
-                        data: {
-                            categories: {
-                                set: row.categoryIds
-                                    .filter((id) => categoryIds.has(id))
-                                    .map((id) => ({ id })),
+                            types: {
+                                set: validTypeIds.map((id) => ({ id })),
                             },
                         },
                     });
@@ -7339,7 +7535,7 @@ let SyncService = SyncService_1 = class SyncService {
         return this.withRetry('info', () => this.buildInfo());
     }
     async buildInfo() {
-        const [categories, authors, itemTypes, physicalBooks, items, bookCopies, itemCopies] = await Promise.all([
+        const [categories, authors, itemTypes, physicalBooks, items, bookCopies, itemCopies,] = await Promise.all([
             this.prisma.category.count(),
             this.prisma.author.count(),
             this.prisma.itemType.count(),
@@ -7379,7 +7575,7 @@ exports.SyncService = SyncService = SyncService_1 = __decorate([
 
 
 /***/ }),
-/* 113 */
+/* 115 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -7399,8 +7595,8 @@ var _a;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.SyncController = void 0;
 const common_1 = __webpack_require__(3);
-const sync_service_1 = __webpack_require__(112);
-const sync_token_guard_1 = __webpack_require__(114);
+const sync_service_1 = __webpack_require__(114);
+const sync_token_guard_1 = __webpack_require__(116);
 let SyncController = class SyncController {
     constructor(syncService) {
         this.syncService = syncService;
@@ -7443,7 +7639,7 @@ exports.SyncController = SyncController = __decorate([
 
 
 /***/ }),
-/* 114 */
+/* 116 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -7456,7 +7652,7 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.SyncTokenGuard = void 0;
 const common_1 = __webpack_require__(3);
-const crypto_1 = __webpack_require__(115);
+const crypto_1 = __webpack_require__(117);
 let SyncTokenGuard = class SyncTokenGuard {
     canActivate(context) {
         const expected = process.env.SYNC_TOKEN;
@@ -7484,13 +7680,13 @@ exports.SyncTokenGuard = SyncTokenGuard = __decorate([
 
 
 /***/ }),
-/* 115 */
+/* 117 */
 /***/ ((module) => {
 
 module.exports = require("crypto");
 
 /***/ }),
-/* 116 */
+/* 118 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -7503,8 +7699,8 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.AiBooksModule = void 0;
 const common_1 = __webpack_require__(3);
-const ai_books_service_1 = __webpack_require__(117);
-const ai_books_controller_1 = __webpack_require__(122);
+const ai_books_service_1 = __webpack_require__(119);
+const ai_books_controller_1 = __webpack_require__(124);
 const config_1 = __webpack_require__(4);
 const bulk_books_service_1 = __webpack_require__(46);
 const books_service_1 = __webpack_require__(37);
@@ -7523,7 +7719,7 @@ exports.AiBooksModule = AiBooksModule = __decorate([
 
 
 /***/ }),
-/* 117 */
+/* 119 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -7541,11 +7737,11 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.AiBooksService = void 0;
 const common_1 = __webpack_require__(3);
 const config_1 = __webpack_require__(4);
-const groq_1 = __webpack_require__(118);
-const messages_1 = __webpack_require__(119);
+const groq_1 = __webpack_require__(120);
+const messages_1 = __webpack_require__(121);
 const prisma_service_1 = __webpack_require__(6);
-const book_extraction_schema_1 = __webpack_require__(120);
-const book_extraction_schema_2 = __webpack_require__(120);
+const book_extraction_schema_1 = __webpack_require__(122);
+const book_extraction_schema_2 = __webpack_require__(122);
 let AiBooksService = class AiBooksService {
     constructor(configService, prisma) {
         this.configService = configService;
@@ -7652,25 +7848,25 @@ exports.AiBooksService = AiBooksService = __decorate([
 
 
 /***/ }),
-/* 118 */
+/* 120 */
 /***/ ((module) => {
 
 module.exports = require("@langchain/groq");
 
 /***/ }),
-/* 119 */
+/* 121 */
 /***/ ((module) => {
 
 module.exports = require("@langchain/core/messages");
 
 /***/ }),
-/* 120 */
+/* 122 */
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.BulkBookActionSchema = exports.BookExtractionSchema = void 0;
-const zod_1 = __webpack_require__(121);
+const zod_1 = __webpack_require__(123);
 const pnf_1 = __webpack_require__(38);
 const PNF_ENUM = zod_1.z.string().min(3).describe('El Programa Nacional de Formación asociado.');
 const PNF_LIST = zod_1.z.preprocess((val) => (val === null || val === undefined ? [] : Array.isArray(val) ? val.map((item) => (0, pnf_1.normalizePnfName)(item)).filter(Boolean) : val), zod_1.z.array(PNF_ENUM));
@@ -7701,13 +7897,13 @@ exports.BulkBookActionSchema = zod_1.z.object({
 
 
 /***/ }),
-/* 121 */
+/* 123 */
 /***/ ((module) => {
 
 module.exports = require("zod");
 
 /***/ }),
-/* 122 */
+/* 124 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -7727,8 +7923,8 @@ var _a, _b, _c, _d, _e, _f;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.AiBooksController = void 0;
 const common_1 = __webpack_require__(3);
-const platform_express_1 = __webpack_require__(58);
-const ai_books_service_1 = __webpack_require__(117);
+const platform_express_1 = __webpack_require__(60);
+const ai_books_service_1 = __webpack_require__(119);
 const bulk_books_service_1 = __webpack_require__(46);
 const jwt_auth_guard_1 = __webpack_require__(25);
 const roles_guard_1 = __webpack_require__(30);
@@ -7789,7 +7985,7 @@ exports.AiBooksController = AiBooksController = __decorate([
 
 
 /***/ }),
-/* 123 */
+/* 125 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -7802,8 +7998,8 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.AiInventoryModule = void 0;
 const common_1 = __webpack_require__(3);
-const ai_inventory_service_1 = __webpack_require__(124);
-const ai_inventory_controller_1 = __webpack_require__(126);
+const ai_inventory_service_1 = __webpack_require__(126);
+const ai_inventory_controller_1 = __webpack_require__(128);
 const config_1 = __webpack_require__(4);
 let AiInventoryModule = class AiInventoryModule {
 };
@@ -7820,7 +8016,7 @@ exports.AiInventoryModule = AiInventoryModule = __decorate([
 
 
 /***/ }),
-/* 124 */
+/* 126 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -7838,9 +8034,9 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.AiInventoryService = void 0;
 const common_1 = __webpack_require__(3);
 const config_1 = __webpack_require__(4);
-const groq_1 = __webpack_require__(118);
-const messages_1 = __webpack_require__(119);
-const inventory_extraction_schema_1 = __webpack_require__(125);
+const groq_1 = __webpack_require__(120);
+const messages_1 = __webpack_require__(121);
+const inventory_extraction_schema_1 = __webpack_require__(127);
 let AiInventoryService = class AiInventoryService {
     constructor(configService) {
         this.configService = configService;
@@ -7866,18 +8062,22 @@ let AiInventoryService = class AiInventoryService {
                 code: currentItemData.code || null,
                 description: currentItemData.description || null,
                 stock: currentItemData.totalStock?.toString() || '0',
-                typeName: currentItemData.type?.name || null
+                typeNames: Array.isArray(currentItemData.types)
+                    ? currentItemData.types.map((type) => type?.name).filter(Boolean)
+                    : null,
             };
         }
         const systemPrompt = `
       Eres el asistente de gestión de inventarios de la plataforma UPTALib.
       Tu trabajo es procesar las solicitudes de los administradores para rellenar los datos de insumos, equipos o herramientas.
       
-      Debes extraer: name, code, description, stock y typeName (el tipo o categoría del item).
+      Debes extraer: name, code, description, stock y typeNames (uno o más tipos del item).
       
-      ${normalizedContext ? `CONTEXTO DE EDICIÓN: El administrador está modificando un item existente cuyos valores actuales son: ${JSON.stringify(normalizedContext)}. 
+      ${normalizedContext
+            ? `CONTEXTO DE EDICIÓN: El administrador está modificando un item existente cuyos valores actuales son: ${JSON.stringify(normalizedContext)}. 
       Modifica, incrementa, decrementa o actualiza los datos basándote estrictamente en esta estructura. 
-      Si el usuario pide cambiar el stock (ej. "Ponle 15" o "Súmale 2"), calcula o define el valor final y devuélvelo en la propiedad 'stock' como un string numérico.` : ''}
+      Si el usuario pide cambiar el stock (ej. "Ponle 15" o "Súmale 2"), calcula o define el valor final y devuélvelo en la propiedad 'stock' como un string numérico.`
+            : ''}
       
       Si el usuario no especifica un cambio en una propiedad, devuélvelo como null (o mantén el valor original del contexto si es edición). El stock debe ser retornado siempre como string numérico.
     `;
@@ -7891,7 +8091,13 @@ let AiInventoryService = class AiInventoryService {
             console.error('Error en AI Inventory:', error);
             return {
                 message: 'No se pudo procesar la solicitud del inventario de forma automatizada.',
-                extractedData: { name: null, code: null, description: null, stock: null, typeName: null }
+                extractedData: {
+                    name: null,
+                    code: null,
+                    description: null,
+                    stock: null,
+                    typeNames: null,
+                },
             };
         }
     }
@@ -7904,27 +8110,44 @@ exports.AiInventoryService = AiInventoryService = __decorate([
 
 
 /***/ }),
-/* 125 */
+/* 127 */
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.InventoryExtractionSchema = void 0;
-const zod_1 = __webpack_require__(121);
+const zod_1 = __webpack_require__(123);
 exports.InventoryExtractionSchema = zod_1.z.object({
-    message: zod_1.z.string().describe('Un mensaje amigable detallando qué características del item se lograron identificar.'),
+    message: zod_1.z
+        .string()
+        .describe('Un mensaje amigable detallando qué características del item se lograron identificar.'),
     extractedData: zod_1.z.object({
-        name: zod_1.z.string().nullable().describe('El nombre del objeto o equipo de inventario.'),
-        code: zod_1.z.string().nullable().describe('El código interno de identificación o serial del item si se menciona.'),
-        description: zod_1.z.string().nullable().describe('Una descripción breve sobre el estado físico, marca o uso del item.'),
-        stock: zod_1.z.string().nullable().describe('La cantidad numérica total disponible para el registro.'),
-        typeName: zod_1.z.string().nullable().describe('La categoría o tipo de item (ej. Computación, Mobiliario, Audiovisuales).')
-    })
+        name: zod_1.z
+            .string()
+            .nullable()
+            .describe('El nombre del objeto o equipo de inventario.'),
+        code: zod_1.z
+            .string()
+            .nullable()
+            .describe('El código interno de identificación o serial del item si se menciona.'),
+        description: zod_1.z
+            .string()
+            .nullable()
+            .describe('Una descripción breve sobre el estado físico, marca o uso del item.'),
+        stock: zod_1.z
+            .string()
+            .nullable()
+            .describe('La cantidad numérica total disponible para el registro.'),
+        typeNames: zod_1.z
+            .array(zod_1.z.string())
+            .nullable()
+            .describe('Uno o más tipos de item (ej. Computación, Mobiliario, Audiovisuales).'),
+    }),
 });
 
 
 /***/ }),
-/* 126 */
+/* 128 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -7944,7 +8167,7 @@ var _a, _b;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.AiInventoryController = void 0;
 const common_1 = __webpack_require__(3);
-const ai_inventory_service_1 = __webpack_require__(124);
+const ai_inventory_service_1 = __webpack_require__(126);
 let AiInventoryController = class AiInventoryController {
     constructor(aiInventoryService) {
         this.aiInventoryService = aiInventoryService;
@@ -7969,7 +8192,7 @@ exports.AiInventoryController = AiInventoryController = __decorate([
 
 
 /***/ }),
-/* 127 */
+/* 129 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -7982,8 +8205,8 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.AiPhysicalBookModule = void 0;
 const common_1 = __webpack_require__(3);
-const ai_physical_book_service_1 = __webpack_require__(128);
-const ai_physical_book_controller_1 = __webpack_require__(130);
+const ai_physical_book_service_1 = __webpack_require__(130);
+const ai_physical_book_controller_1 = __webpack_require__(132);
 const config_1 = __webpack_require__(4);
 let AiPhysicalBookModule = class AiPhysicalBookModule {
 };
@@ -7998,7 +8221,7 @@ exports.AiPhysicalBookModule = AiPhysicalBookModule = __decorate([
 
 
 /***/ }),
-/* 128 */
+/* 130 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -8016,10 +8239,10 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.AiPhysicalBookService = void 0;
 const common_1 = __webpack_require__(3);
 const config_1 = __webpack_require__(4);
-const groq_1 = __webpack_require__(118);
-const messages_1 = __webpack_require__(119);
+const groq_1 = __webpack_require__(120);
+const messages_1 = __webpack_require__(121);
 const prisma_service_1 = __webpack_require__(6);
-const book_extraction_schema_1 = __webpack_require__(129);
+const book_extraction_schema_1 = __webpack_require__(131);
 const pnf_1 = __webpack_require__(38);
 let AiPhysicalBookService = class AiPhysicalBookService {
     constructor(configService, prisma) {
@@ -8112,13 +8335,13 @@ exports.AiPhysicalBookService = AiPhysicalBookService = __decorate([
 
 
 /***/ }),
-/* 129 */
+/* 131 */
 /***/ ((__unused_webpack_module, exports, __webpack_require__) => {
 
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.BookExtractionSchema = void 0;
-const zod_1 = __webpack_require__(121);
+const zod_1 = __webpack_require__(123);
 const pnf_1 = __webpack_require__(38);
 const PNF_LIST = zod_1.z.preprocess((val) => (val === null || val === undefined ? [] : Array.isArray(val) ? val.map((item) => (0, pnf_1.normalizePnfName)(typeof item === 'string' ? item : item?.name ?? item?.pnf ?? '')).filter(Boolean) : val), zod_1.z.array(zod_1.z.string().min(3).describe('El Programa Nacional de Formación asociado.')));
 exports.BookExtractionSchema = zod_1.z.object({
@@ -8138,7 +8361,7 @@ exports.BookExtractionSchema = zod_1.z.object({
 
 
 /***/ }),
-/* 130 */
+/* 132 */
 /***/ (function(__unused_webpack_module, exports, __webpack_require__) {
 
 
@@ -8158,7 +8381,7 @@ var _a, _b;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.AiPhysicalBookController = void 0;
 const common_1 = __webpack_require__(3);
-const ai_physical_book_service_1 = __webpack_require__(128);
+const ai_physical_book_service_1 = __webpack_require__(130);
 let AiPhysicalBookController = class AiPhysicalBookController {
     constructor(aiBookService) {
         this.aiBookService = aiBookService;
@@ -8187,7 +8410,7 @@ exports.AiPhysicalBookController = AiPhysicalBookController = __decorate([
 
 
 /***/ }),
-/* 131 */
+/* 133 */
 /***/ ((module) => {
 
 module.exports = require("cookie-parser");

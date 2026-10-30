@@ -8,7 +8,12 @@ describe('PhysicalBookOperationController', () => {
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       controllers: [PhysicalBookOperationController],
-      providers: [PhysicalBookOperationService],
+      providers: [
+        {
+          provide: PhysicalBookOperationService,
+          useValue: {},
+        },
+      ],
     }).compile();
 
     controller = module.get<PhysicalBookOperationController>(PhysicalBookOperationController);

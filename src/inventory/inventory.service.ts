@@ -8,7 +8,11 @@ import { CopyStatus } from '@prisma/client';
 import { PrismaService } from 'prisma/prisma.service';
 import { getPagination } from '../functions/pagination/getPagination';
 import getStockDifference from '../utils/getDifference';
-import { createItemCopies, recalcItemStock } from '../utils/copies';
+import {
+  createItemCopies,
+  recalcItemStock,
+  type CopyExtra,
+} from '../utils/copies';
 import { bulkErrorMessage, bulkSummaryMessage } from '../utils/bulk';
 
 @Injectable()
@@ -49,12 +53,7 @@ export class InventoryService {
     item: { id: string; code?: string | null },
     quantity: number,
     requestedCodes: string[] = [],
-    extra: {
-      location?: string | null;
-      observations?: string | null;
-      codeFrom?: string | null;
-      codeTo?: string | null;
-    } = {},
+    extra: CopyExtra = {},
   ) {
     return createItemCopies(tx, item, quantity, requestedCodes, extra);
   }
@@ -64,6 +63,7 @@ export class InventoryService {
     item: { id: string; code?: string | null },
     targetTotal: number,
     requestedCodes: string[] = [],
+    extra: CopyExtra = {},
   ): Promise<boolean> {
     const copies = await tx.itemCopy.findMany({
       where: { itemId: item.id },
@@ -76,7 +76,7 @@ export class InventoryService {
     const diff = targetTotal - active.length;
 
     if (diff > 0) {
-      await this.createCopies(tx, item, diff, requestedCodes);
+      await this.createCopies(tx, item, diff, requestedCodes, extra);
     } else if (diff < 0) {
       const removable = active.filter(
         (c: any) => c.status !== CopyStatus.PRESTADO,
@@ -111,6 +111,8 @@ export class InventoryService {
         typeNames = [],
         stock,
         copyCodes = [],
+        codeFrom,
+        codeTo,
         ...restOfDto
       } = createInventoryDto;
 
@@ -147,6 +149,7 @@ export class InventoryService {
         item,
         parsedStock,
         Array.isArray(copyCodes) ? copyCodes : [],
+        { codeFrom, codeTo },
       );
       await recalcItemStock(tx, item.id);
 
@@ -235,6 +238,8 @@ export class InventoryService {
         typeNames,
         stock,
         copyCodes,
+        codeFrom,
+        codeTo,
         ...restOfDto
       } = updateInventoryDto;
 
@@ -260,9 +265,17 @@ export class InventoryService {
         stock !== undefined ? parseInt(stock) : existingItem.totalStock;
       const hasCopies = await this.reconcileCopies(
         tx,
-        existingItem,
+        {
+          ...existingItem,
+          // 💡 Los nuevos ejemplares usan el código objetivo del artículo, no el antiguo
+          code:
+            restOfDto.code !== undefined
+              ? `${restOfDto.code ?? ''}`.trim() || existingItem.code
+              : existingItem.code,
+        },
         targetTotal,
         Array.isArray(copyCodes) ? copyCodes : [],
+        { codeFrom, codeTo },
       );
 
       const updateData: any = {

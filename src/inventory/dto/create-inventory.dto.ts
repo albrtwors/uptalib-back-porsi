@@ -66,4 +66,13 @@ export class CreateInventoryDto {
     message: 'Cada código de ejemplar debe ser una cadena de texto',
   })
   copyCodes?: string[];
+
+  // 💡 Rango opcional para generar los códigos de los ejemplares
+  @IsOptional()
+  @IsString({ message: 'El código inicial debe ser cadena de texto' })
+  codeFrom?: string;
+
+  @IsOptional()
+  @IsString({ message: 'El código final debe ser cadena de texto' })
+  codeTo?: string;
 }

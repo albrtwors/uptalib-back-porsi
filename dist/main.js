@@ -2641,7 +2641,7 @@ let InventoryService = class InventoryService {
     async createCopies(tx, item, quantity, requestedCodes = [], extra = {}) {
         return (0, copies_1.createItemCopies)(tx, item, quantity, requestedCodes, extra);
     }
-    async reconcileCopies(tx, item, targetTotal, requestedCodes = []) {
+    async reconcileCopies(tx, item, targetTotal, requestedCodes = [], extra = {}) {
         const copies = await tx.itemCopy.findMany({
             where: { itemId: item.id },
             orderBy: { createdAt: 'asc' },
@@ -2651,7 +2651,7 @@ let InventoryService = class InventoryService {
         const active = copies.filter((c) => c.status !== client_1.CopyStatus.BAJA);
         const diff = targetTotal - active.length;
         if (diff > 0) {
-            await this.createCopies(tx, item, diff, requestedCodes);
+            await this.createCopies(tx, item, diff, requestedCodes, extra);
         }
         else if (diff < 0) {
             const removable = active.filter((c) => c.status !== client_1.CopyStatus.PRESTADO);
@@ -2673,7 +2673,7 @@ let InventoryService = class InventoryService {
     }
     async create(createInventoryDto) {
         return this.prisma.$transaction(async (tx) => {
-            const { typeId, typeName, typeIds = [], typeNames = [], stock, copyCodes = [], ...restOfDto } = createInventoryDto;
+            const { typeId, typeName, typeIds = [], typeNames = [], stock, copyCodes = [], codeFrom, codeTo, ...restOfDto } = createInventoryDto;
             const resolvedTypeIds = await this.resolveTypeIds(tx, [...(typeId ? [typeId] : []), ...typeIds], [...(typeName ? [typeName] : []), ...typeNames]);
             if (resolvedTypeIds.length === 0) {
                 throw new common_1.BadRequestException('Debes seleccionar al menos un tipo');
@@ -2693,7 +2693,7 @@ let InventoryService = class InventoryService {
                     types: { select: { id: true, name: true } },
                 },
             });
-            await this.createCopies(tx, item, parsedStock, Array.isArray(copyCodes) ? copyCodes : []);
+            await this.createCopies(tx, item, parsedStock, Array.isArray(copyCodes) ? copyCodes : [], { codeFrom, codeTo });
             await (0, copies_1.recalcItemStock)(tx, item.id);
             const withStock = await tx.item.findUnique({
                 where: { id: item.id },
@@ -2758,7 +2758,7 @@ let InventoryService = class InventoryService {
             const existingItem = await tx.item.findUnique({ where: { id } });
             if (!existingItem)
                 throw new common_1.HttpException('Item no encontrado', common_1.HttpStatus.NOT_FOUND);
-            const { typeId, typeName, typeIds, typeNames, stock, copyCodes, ...restOfDto } = updateInventoryDto;
+            const { typeId, typeName, typeIds, typeNames, stock, copyCodes, codeFrom, codeTo, ...restOfDto } = updateInventoryDto;
             const typesProvided = typeId !== undefined ||
                 typeName !== undefined ||
                 typeIds !== undefined ||
@@ -2770,7 +2770,12 @@ let InventoryService = class InventoryService {
                 throw new common_1.BadRequestException('Debes seleccionar al menos un tipo');
             }
             const targetTotal = stock !== undefined ? parseInt(stock) : existingItem.totalStock;
-            const hasCopies = await this.reconcileCopies(tx, existingItem, targetTotal, Array.isArray(copyCodes) ? copyCodes : []);
+            const hasCopies = await this.reconcileCopies(tx, {
+                ...existingItem,
+                code: restOfDto.code !== undefined
+                    ? `${restOfDto.code ?? ''}`.trim() || existingItem.code
+                    : existingItem.code,
+            }, targetTotal, Array.isArray(copyCodes) ? copyCodes : [], { codeFrom, codeTo });
             const updateData = {
                 ...restOfDto,
             };
@@ -3537,6 +3542,16 @@ __decorate([
     }),
     __metadata("design:type", Array)
 ], CreateInventoryDto.prototype, "copyCodes", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)({ message: 'El código inicial debe ser cadena de texto' }),
+    __metadata("design:type", String)
+], CreateInventoryDto.prototype, "codeFrom", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)({ message: 'El código final debe ser cadena de texto' }),
+    __metadata("design:type", String)
+], CreateInventoryDto.prototype, "codeTo", void 0);
 
 
 /***/ }),

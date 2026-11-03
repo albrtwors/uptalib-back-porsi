@@ -3485,7 +3485,7 @@ __decorate([
 ], CreateInventoryDto.prototype, "stock", void 0);
 __decorate([
     (0, class_validator_1.IsString)({ message: 'El nombre debe ser texto' }),
-    (0, class_validator_1.MaxLength)(20, { message: 'El nombre debe tener un máximo de 20 caracteres' }),
+    (0, class_validator_1.MaxLength)(100, { message: 'El nombre debe tener un máximo de 100 caracteres' }),
     (0, class_validator_1.MinLength)(3, { message: 'El nombre debe tener mínimo 3 caracteres' }),
     __metadata("design:type", String)
 ], CreateInventoryDto.prototype, "name", void 0);

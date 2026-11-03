@@ -16,7 +16,7 @@ export class CreateInventoryDto {
   stock: number;
 
   @IsString({ message: 'El nombre debe ser texto' })
-  @MaxLength(20, { message: 'El nombre debe tener un máximo de 20 caracteres' })
+  @MaxLength(100, { message: 'El nombre debe tener un máximo de 100 caracteres' })
   @MinLength(3, { message: 'El nombre debe tener mínimo 3 caracteres' })
   name: string;
 

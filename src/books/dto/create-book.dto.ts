@@ -1,8 +1,9 @@
-import { IsNotEmpty, IsOptional, IsString, IsUrl } from 'class-validator';
+import { IsNotEmpty, IsOptional, IsString, IsUrl, MaxLength } from 'class-validator';
 
 export class CreateBookDto {
   @IsNotEmpty({ message: 'No puede estar vacío' })
   @IsString({ message: 'Debe ser una cadena de texto' })
+  @MaxLength(100, { message: 'El título debe tener un máximo de 100 caracteres' })
   title: string;
 
   @IsOptional()

@@ -1,6 +1,6 @@
 import { OperationType } from "@prisma/client";
 import { Transform } from "class-transformer";
-import { IsInt, IsOptional, isString, IsString } from "class-validator";
+import { IsInt, IsOptional, isString, IsString, MaxLength, MinLength } from "class-validator";
 
 export class MakeLoanDto {
     @IsString()
@@ -20,10 +20,14 @@ export class MakeLoanDto {
     @IsString()
     personId: string
 
-    @IsString()
+    @IsString({ message: 'Los nombres deben ser texto' })
+    @MinLength(3, { message: 'Los nombres deben tener minimo 3 caracteres' })
+    @MaxLength(40, { message: 'Los nombres deben tener maximo 40 caracteres' })
     personNames: string
 
-    @IsString()
+    @IsString({ message: 'Los apellidos deben ser texto' })
+    @MinLength(3, { message: 'Los apellidos deben tener minimo 3 caracteres' })
+    @MaxLength(40, { message: 'Los apellidos deben tener maximo 40 caracteres' })
     personSurNames: string
 
 }

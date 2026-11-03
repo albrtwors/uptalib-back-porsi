@@ -1,4 +1,4 @@
-import { IsEmail, IsEnum, IsNotEmpty, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsEnum, IsNotEmpty, IsString, MaxLength, MinLength } from 'class-validator';
 
 // Define the Role enum locally if not exported by Prisma
 export enum Role {
@@ -10,6 +10,7 @@ export enum Role {
 export class CreateUserDto {
   @IsNotEmpty()
   @IsString()
+  @MaxLength(100, { message: 'El nombre debe tener un máximo de 100 caracteres' })
   name: string;
 
   @IsNotEmpty()
@@ -26,6 +27,7 @@ export class CreateUserDto {
 export class CreateUserAdminDto {
   @IsNotEmpty()
   @IsString()
+  @MaxLength(100, { message: 'El nombre debe tener un máximo de 100 caracteres' })
   name: string;
 
   @IsNotEmpty()

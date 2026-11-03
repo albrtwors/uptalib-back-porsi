@@ -1,10 +1,11 @@
 import { Transform } from "class-transformer";
-import { IsArray, IsInt, IsOptional, IsPositive, IsString, MinLength } from "class-validator";
+import { IsArray, IsInt, IsOptional, IsPositive, IsString, MaxLength, MinLength } from "class-validator";
 
 export class CreatePhysicalBookDto {
 
     @IsString({ message: 'El título del libro debe ser una cadena de texto' })
     @MinLength(3, { message: 'El nombre del libro debe tener mínimo 3 caracteres' })
+    @MaxLength(100, { message: 'El título del libro debe tener un máximo de 100 caracteres' })
     title: string;
 
     @IsOptional()
@@ -46,12 +47,14 @@ export class CreatePhysicalBookDto {
     @IsOptional()
     @IsArray({ message: 'Los autores deben ser un arreglo' })
     @IsString({ each: true, message: 'Cada nombre de autor debe ser una cadena de texto' })
+    @MaxLength(100, { each: true, message: 'Cada nombre de autor debe tener un máximo de 100 caracteres' })
     authorNames?: string[];
 
     // 💡 Compatibilidad hacia atrás: un solo nombre de autor
     @IsOptional()
     @IsString({ message: 'El nombre del autor debe ser una cadena de texto' })
     @MinLength(2, { message: 'El nombre del autor debe tener mínimo 2 caracteres' })
+    @MaxLength(100, { message: 'El nombre del autor debe tener un máximo de 100 caracteres' })
     authorName?: string;
 
     // 💡 Compatibilidad hacia atrás: un solo autor por ID
@@ -69,12 +72,14 @@ export class CreatePhysicalBookDto {
     @IsOptional()
     @IsArray({ message: 'Las categorías deben ser un arreglo' })
     @IsString({ each: true, message: 'Cada nombre de categoría debe ser una cadena de texto' })
+    @MaxLength(100, { each: true, message: 'Cada nombre de categoría debe tener un máximo de 100 caracteres' })
     categoryNames?: string[];
 
     // 💡 Compatibilidad hacia atrás: un solo nombre de categoría
     @IsOptional()
     @IsString({ message: 'El nombre de la categoría debe ser una cadena de texto' })
     @MinLength(2, { message: 'El género literario debe tener mínimo 2 caracteres' })
+    @MaxLength(100, { message: 'El nombre de la categoría debe tener un máximo de 100 caracteres' })
     categoryName?: string;
 
     // 💡 Compatibilidad hacia atrás: una sola categoría por ID
@@ -92,11 +97,13 @@ export class CreatePhysicalBookDto {
     @IsOptional()
     @IsArray({ message: 'Los PNFs deben ser un arreglo' })
     @IsString({ each: true, message: 'Cada nombre de PNF debe ser una cadena de texto' })
+    @MaxLength(100, { each: true, message: 'Cada nombre de PNF debe tener un máximo de 100 caracteres' })
     pnfNames?: string[];
 
     // 💡 Compatibilidad hacia atrás con el PNF único
     @IsOptional()
     @IsString({ message: 'El PNF debe ser una cadena de texto' })
+    @MaxLength(100, { message: 'El nombre del PNF debe tener un máximo de 100 caracteres' })
     pnf?: string;
 
     @IsOptional()
@@ -107,6 +114,7 @@ export class CreatePhysicalBookDto {
     @IsOptional()
     @IsArray({ message: 'Los PNFs deben ser un arreglo' })
     @IsString({ each: true, message: 'Cada nombre de PNF debe ser una cadena de texto' })
+    @MaxLength(100, { each: true, message: 'Cada nombre de PNF debe tener un máximo de 100 caracteres' })
     pnfs?: string[];
 
     @IsOptional()

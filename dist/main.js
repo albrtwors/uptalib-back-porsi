@@ -1207,6 +1207,7 @@ exports.RegisterDto = RegisterDto;
 __decorate([
     (0, class_validator_1.IsNotEmpty)(),
     (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MaxLength)(100, { message: 'El nombre debe tener un máximo de 100 caracteres' }),
     __metadata("design:type", String)
 ], RegisterDto.prototype, "name", void 0);
 __decorate([
@@ -1553,6 +1554,7 @@ exports.CreateUserDto = CreateUserDto;
 __decorate([
     (0, class_validator_1.IsNotEmpty)(),
     (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MaxLength)(100, { message: 'El nombre debe tener un máximo de 100 caracteres' }),
     __metadata("design:type", String)
 ], CreateUserDto.prototype, "name", void 0);
 __decorate([
@@ -1571,6 +1573,7 @@ exports.CreateUserAdminDto = CreateUserAdminDto;
 __decorate([
     (0, class_validator_1.IsNotEmpty)(),
     (0, class_validator_1.IsString)(),
+    (0, class_validator_1.MaxLength)(100, { message: 'El nombre debe tener un máximo de 100 caracteres' }),
     __metadata("design:type", String)
 ], CreateUserAdminDto.prototype, "name", void 0);
 __decorate([
@@ -3518,6 +3521,10 @@ __decorate([
         each: true,
         message: 'Cada nombre de tipo debe ser una cadena de texto',
     }),
+    (0, class_validator_1.MaxLength)(100, {
+        each: true,
+        message: 'Cada nombre de tipo debe tener un máximo de 100 caracteres',
+    }),
     __metadata("design:type", Array)
 ], CreateInventoryDto.prototype, "typeNames", void 0);
 __decorate([
@@ -3530,6 +3537,9 @@ __decorate([
     (0, class_validator_1.IsString)({ message: 'El nombre del tipo debe ser texto' }),
     (0, class_validator_1.MinLength)(2, {
         message: 'El nombre del tipo debe tener mínimo 2 caracteres',
+    }),
+    (0, class_validator_1.MaxLength)(100, {
+        message: 'El nombre del tipo debe tener un máximo de 100 caracteres',
     }),
     __metadata("design:type", String)
 ], CreateInventoryDto.prototype, "typeName", void 0);
@@ -4321,6 +4331,7 @@ exports.CreatePhysicalBookDto = CreatePhysicalBookDto;
 __decorate([
     (0, class_validator_1.IsString)({ message: 'El título del libro debe ser una cadena de texto' }),
     (0, class_validator_1.MinLength)(3, { message: 'El nombre del libro debe tener mínimo 3 caracteres' }),
+    (0, class_validator_1.MaxLength)(100, { message: 'El título del libro debe tener un máximo de 100 caracteres' }),
     __metadata("design:type", String)
 ], CreatePhysicalBookDto.prototype, "title", void 0);
 __decorate([
@@ -4365,12 +4376,14 @@ __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsArray)({ message: 'Los autores deben ser un arreglo' }),
     (0, class_validator_1.IsString)({ each: true, message: 'Cada nombre de autor debe ser una cadena de texto' }),
+    (0, class_validator_1.MaxLength)(100, { each: true, message: 'Cada nombre de autor debe tener un máximo de 100 caracteres' }),
     __metadata("design:type", Array)
 ], CreatePhysicalBookDto.prototype, "authorNames", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)({ message: 'El nombre del autor debe ser una cadena de texto' }),
     (0, class_validator_1.MinLength)(2, { message: 'El nombre del autor debe tener mínimo 2 caracteres' }),
+    (0, class_validator_1.MaxLength)(100, { message: 'El nombre del autor debe tener un máximo de 100 caracteres' }),
     __metadata("design:type", String)
 ], CreatePhysicalBookDto.prototype, "authorName", void 0);
 __decorate([
@@ -4388,12 +4401,14 @@ __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsArray)({ message: 'Las categorías deben ser un arreglo' }),
     (0, class_validator_1.IsString)({ each: true, message: 'Cada nombre de categoría debe ser una cadena de texto' }),
+    (0, class_validator_1.MaxLength)(100, { each: true, message: 'Cada nombre de categoría debe tener un máximo de 100 caracteres' }),
     __metadata("design:type", Array)
 ], CreatePhysicalBookDto.prototype, "categoryNames", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)({ message: 'El nombre de la categoría debe ser una cadena de texto' }),
     (0, class_validator_1.MinLength)(2, { message: 'El género literario debe tener mínimo 2 caracteres' }),
+    (0, class_validator_1.MaxLength)(100, { message: 'El nombre de la categoría debe tener un máximo de 100 caracteres' }),
     __metadata("design:type", String)
 ], CreatePhysicalBookDto.prototype, "categoryName", void 0);
 __decorate([
@@ -4411,11 +4426,13 @@ __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsArray)({ message: 'Los PNFs deben ser un arreglo' }),
     (0, class_validator_1.IsString)({ each: true, message: 'Cada nombre de PNF debe ser una cadena de texto' }),
+    (0, class_validator_1.MaxLength)(100, { each: true, message: 'Cada nombre de PNF debe tener un máximo de 100 caracteres' }),
     __metadata("design:type", Array)
 ], CreatePhysicalBookDto.prototype, "pnfNames", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)({ message: 'El PNF debe ser una cadena de texto' }),
+    (0, class_validator_1.MaxLength)(100, { message: 'El nombre del PNF debe tener un máximo de 100 caracteres' }),
     __metadata("design:type", String)
 ], CreatePhysicalBookDto.prototype, "pnf", void 0);
 __decorate([
@@ -4427,6 +4444,7 @@ __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsArray)({ message: 'Los PNFs deben ser un arreglo' }),
     (0, class_validator_1.IsString)({ each: true, message: 'Cada nombre de PNF debe ser una cadena de texto' }),
+    (0, class_validator_1.MaxLength)(100, { each: true, message: 'Cada nombre de PNF debe tener un máximo de 100 caracteres' }),
     __metadata("design:type", Array)
 ], CreatePhysicalBookDto.prototype, "pnfs", void 0);
 __decorate([
@@ -4930,8 +4948,9 @@ class CreateAuthorDto {
 }
 exports.CreateAuthorDto = CreateAuthorDto;
 __decorate([
-    (0, class_validator_1.IsString)(),
-    (0, class_validator_1.MinLength)(3),
+    (0, class_validator_1.IsString)({ message: 'El nombre debe ser una cadena de texto' }),
+    (0, class_validator_1.MinLength)(3, { message: 'El nombre debe tener mínimo 3 caracteres' }),
+    (0, class_validator_1.MaxLength)(100, { message: 'El nombre debe tener un máximo de 100 caracteres' }),
     __metadata("design:type", String)
 ], CreateAuthorDto.prototype, "name", void 0);
 
@@ -6212,6 +6231,7 @@ exports.CreateItemTypeDto = CreateItemTypeDto;
 __decorate([
     (0, class_validator_1.IsString)({ message: 'El tipo debe ser una cadena de texto' }),
     (0, class_validator_1.MinLength)(3, { message: 'El tipo debe tener como minimo 3 caracteres de longitud' }),
+    (0, class_validator_1.MaxLength)(100, { message: 'El tipo debe tener un máximo de 100 caracteres' }),
     __metadata("design:type", String)
 ], CreateItemTypeDto.prototype, "name", void 0);
 

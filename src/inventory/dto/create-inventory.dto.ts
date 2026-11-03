@@ -45,6 +45,10 @@ export class CreateInventoryDto {
     each: true,
     message: 'Cada nombre de tipo debe ser una cadena de texto',
   })
+  @MaxLength(100, {
+    each: true,
+    message: 'Cada nombre de tipo debe tener un máximo de 100 caracteres',
+  })
   typeNames?: string[];
 
   // Compatibilidad con clientes anteriores que envían un solo tipo.
@@ -56,6 +60,9 @@ export class CreateInventoryDto {
   @IsString({ message: 'El nombre del tipo debe ser texto' })
   @MinLength(2, {
     message: 'El nombre del tipo debe tener mínimo 2 caracteres',
+  })
+  @MaxLength(100, {
+    message: 'El nombre del tipo debe tener un máximo de 100 caracteres',
   })
   typeName?: string;
 

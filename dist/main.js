@@ -2715,7 +2715,15 @@ let InventoryService = class InventoryService {
         if (search) {
             where.AND = [
                 {
-                    name: { contains: search, mode: 'insensitive' },
+                    OR: [
+                        { name: { contains: search, mode: 'insensitive' } },
+                        { code: { contains: search, mode: 'insensitive' } },
+                        {
+                            copies: {
+                                some: { code: { contains: search, mode: 'insensitive' } },
+                            },
+                        },
+                    ],
                 },
             ];
         }
@@ -4031,7 +4039,21 @@ let PhysicalBooksService = class PhysicalBooksService {
         const where = {};
         query.genre = query.genre == 'undefined' ? '' : query.genre;
         if (search) {
-            where.AND = [{ title: { contains: search, mode: 'insensitive' } }];
+            where.AND = [
+                {
+                    OR: [
+                        { title: { contains: search, mode: 'insensitive' } },
+                        { code: { contains: search, mode: 'insensitive' } },
+                        { isbn: { contains: search, mode: 'insensitive' } },
+                        {
+                            copies: {
+                                some: { code: { contains: search, mode: 'insensitive' } },
+                            },
+                        },
+                        { pnfs: { some: { name: { contains: search, mode: 'insensitive' } } } },
+                    ],
+                },
+            ];
         }
         if (query.genre) {
             const genreFilter = {

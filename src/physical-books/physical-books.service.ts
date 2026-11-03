@@ -487,8 +487,23 @@ export class PhysicalBooksService {
 
     query.genre = query.genre == 'undefined' ? '' : query.genre;
 
+    // 💡 Búsqueda libre: título, código del libro, ISBN, código del ejemplar o PNF.
     if (search) {
-      where.AND = [{ title: { contains: search, mode: 'insensitive' } }];
+      where.AND = [
+        {
+          OR: [
+            { title: { contains: search, mode: 'insensitive' } },
+            { code: { contains: search, mode: 'insensitive' } },
+            { isbn: { contains: search, mode: 'insensitive' } },
+            {
+              copies: {
+                some: { code: { contains: search, mode: 'insensitive' } },
+              },
+            },
+            { pnfs: { some: { name: { contains: search, mode: 'insensitive' } } } },
+          ],
+        },
+      ];
     }
 
     // 💡 Filtro por múltiples categorías: coincide si el libro tiene al menos una con ese nombre

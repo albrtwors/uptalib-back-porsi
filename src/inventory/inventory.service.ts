@@ -172,11 +172,20 @@ export class InventoryService {
     // Pagination utility
     const { take, page, skip } = getPagination(query);
 
-    // Búsqueda por coincidencia de nombre (Case-Insensitive)
+    // 💡 Búsqueda libre: nombre, código del artículo o código del ejemplar. Así
+    // una etiqueta escaneada (o escrita a mano) aterriza en su registro.
     if (search) {
       where.AND = [
         {
-          name: { contains: search, mode: 'insensitive' },
+          OR: [
+            { name: { contains: search, mode: 'insensitive' } },
+            { code: { contains: search, mode: 'insensitive' } },
+            {
+              copies: {
+                some: { code: { contains: search, mode: 'insensitive' } },
+              },
+            },
+          ],
         },
       ];
     }
